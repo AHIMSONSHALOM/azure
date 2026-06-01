@@ -1,0 +1,112 @@
+@using Microsoft.AspNetCore.Http
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PRODUCTHUB CONSOLE</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/css/site.css" asp-append-version="true" />
+</head>
+<body class="bg-light">
+
+    <nav class="navbar navbar-expand-lg saas-navbar mb-4">
+        <div class="container-fluid">
+            <a class="navbar-brand saas-nav-brand d-flex align-items-center text-decoration-none" asp-action="Index" asp-controller="Product">
+                <i class="fa-solid fa-cubes text-primary me-2" style="font-size: 1.4rem;"></i> 
+                <span style="font-family: 'Poppins', sans-serif; font-weight: 800; font-size: 1.3rem;">PRODUCTHUB</span>
+            </a>
+            
+            <button class="navbar-toggler border-0 shadow-none" type="button" data-bs-toggle="collapse" data-bs-target="#saasNavbarContent" aria-controls="saasNavbarContent" aria-expanded="false" aria-label="Toggle navigation">
+                <i class="fa-solid fa-bars" style="color: var(--primary-color); font-size: 1.5rem;"></i>
+            </button>
+
+            <div class="collapse navbar-collapse" id="saasNavbarContent">
+                <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+                    @if (Context.Session.GetString("UserSession") != null)
+                    {
+                        <li class="nav-item d-flex align-items-center">
+                            <a class="saas-nav-link active px-lg-3 px-0 py-2 py-lg-0" asp-action="Index" asp-controller="Product">Dashboard</a>
+                        </li>
+                    }
+                </ul>
+                
+                <div class="d-flex flex-column flex-lg-row align-items-start align-items-lg-center gap-3 mt-3 mt-lg-0 pb-3 pb-lg-0">
+                    @if (Context.Session.GetString("UserSession") != null)
+                    {
+                        @if (Context.Session.GetString("PromptUpdateMobile") == "true")
+                        {
+                            <form asp-action="UpdateMobileNumber" asp-controller="Product" method="post" class="d-flex flex-column flex-sm-row align-items-start align-items-sm-center gap-2 px-3 py-2 rounded-3 border border-warning shadow-sm w-100" style="background-color: #FFFDF5;">
+                                <span class="text-warning-emphasis fw-bold text-nowrap" style="font-size: 0.78rem; font-family: 'Poppins', sans-serif;">
+                                    <i class="fa-solid fa-mobile-screen-button text-warning me-1"></i> Update Mobile:
+                                </span>
+                                <input type="text" name="mobileNumber" class="form-control form-control-sm border-secondary-subtle w-100" placeholder="10-digit number" required pattern="^[0-9]{10}$" title="Please enter a valid 10-digit mobile number." style="max-width: 200px; font-size: 0.78rem; padding: 4px 10px; font-weight: 500;" />
+                                <button type="submit" class="btn btn-sm btn-success px-3 fw-bold w-100 w-sm-auto" style="font-size: 0.78rem;">
+                                    Save
+                                </button>
+                            </form>
+                        }
+
+                        @if (Context.Session.GetInt32("IsAdmin") == 1)
+                        {
+                            <a class="btn btn-sm btn-saas-secondary py-2 px-3 w-100 text-start text-lg-center" asp-action="History" asp-controller="Product" style="font-size: 0.8rem; font-weight: 700;">
+                                <i class="fa-solid fa-timeline text-primary me-1"></i> Audit Logs
+                            </a>
+                        }
+
+                        <div class="dropdown w-100 w-lg-auto">
+                            <button class="btn btn-sm btn-saas-secondary dropdown-toggle fw-bold text-uppercase px-3 d-flex align-items-center justify-content-between justify-content-lg-start gap-2 w-100" type="button" id="userMenuButton" data-bs-toggle="dropdown" aria-expanded="false" style="font-size: 0.8rem; height: 38px;">
+                                <div class="d-flex align-items-center gap-2">
+                                    @if (Context.Session.GetString("UserProfilePicture") != null)
+                                    {
+                                        <img src="@Context.Session.GetString("UserProfilePicture")" class="rounded-circle" style="width: 22px; height: 22px; object-fit: cover;" />
+                                    }
+                                    else
+                                    {
+                                        <i class="fa-solid fa-circle-user text-primary" style="font-size: 1.1rem;"></i>
+                                    }
+                                    <span>@(Context.Session.GetString("UserSession") ?? "Admin")</span>
+                                </div>
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-end shadow border-0 mt-2 p-2 w-100" aria-labelledby="userMenuButton" style="min-width: 220px; font-size: 0.88rem; border-radius: 12px;">
+                                <div class="px-2 py-1 fw-bold text-secondary border-bottom mb-2 text-uppercase" style="font-size: 0.7rem;">Account Console</div>
+                                
+                                @if (Context.Session.GetInt32("IsAdmin") == 1)
+                                {
+                                    <li>
+                                        <a class="dropdown-item fw-semibold text-primary py-2" asp-action="Users" asp-controller="Product">
+                                            <i class="fa-solid fa-users-gear me-2"></i> Manage User Controls
+                                        </a>
+                                    </li>
+                                    <li><hr class="dropdown-divider"></li>
+                                }
+                                
+                                <li>
+                                    <a class="dropdown-item text-danger fw-bold text-center py-2" asp-action="Logout" asp-controller="Account">
+                                        <i class="fa-solid fa-power-off me-1"></i> Terminate Session
+                                    </a>
+                                </li>
+                            </ul>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid px-4">
+        @if (TempData["SuccessMessage"] != null)
+        {
+            <div class="alert alert-success border-0 shadow-sm alert-dismissible fade show p-3 mx-2 mb-3 small fw-bold text-success" role="alert" style="border-radius: 12px;">
+                <i class="fa-solid fa-circle-check me-2"></i> @TempData["SuccessMessage"]
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+        }
+        @RenderBody()
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
