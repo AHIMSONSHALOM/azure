@@ -31,5 +31,20 @@ namespace ProductHub_MVC.Models
 
         [Column("F_PROD_RATING")]
         public double ProductRating { get; set; } 
+
+        [Column("F_CATEGORY")]
+        public string? Category { get; set; }
+
+        [Column("F_LAUNCH_DATE")]
+        public DateTime? LaunchDate { get; set; }
+
+        [Column("F_WEBSITE")]
+        public string? Website { get; set; }
+
+        [Column("F_AI_SUMMARY")]
+        public string? AiSummary { get; set; }
+
+        [Column("F_WIKIPEDIA_URL")]
+        public string? WikipediaUrl { get; set; }
     }
 }

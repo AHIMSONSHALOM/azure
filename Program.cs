@@ -15,6 +15,7 @@ builder.Services.AddControllersWithViews();
 builder.Services.AddScoped<SqlDbContext>();
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("ProductHubSqlConnection")));
+builder.Services.AddHostedService<ProductHub_MVC.Services.DatabaseSyncService>();
 
 // Register Cookie and Google Authentication services
 builder.Services.AddAuthentication(options =>
@@ -25,6 +26,8 @@ builder.Services.AddAuthentication(options =>
 .AddCookie(options =>
 {
     options.LoginPath = "/Account/Login";
+    options.ExpireTimeSpan = TimeSpan.FromMinutes(20);
+    options.SlidingExpiration = true;
 })
 .AddOpenIdConnect("Google", options =>
 {
@@ -69,7 +72,7 @@ builder.Services.AddAuthentication(options =>
 builder.Services.AddDistributedMemoryCache();
 builder.Services.AddSession(options =>
 {
-    options.IdleTimeout = TimeSpan.FromMinutes(3); // Cookie auto expires after 20 minutes of inactivity
+    options.IdleTimeout = TimeSpan.FromMinutes(20); // Session auto expires after 20 minutes of inactivity
     options.Cookie.HttpOnly = true;
     options.Cookie.IsEssential = true;
 });

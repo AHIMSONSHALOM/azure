@@ -506,6 +506,44 @@ namespace ProductHub_MVC.Controllers
         // =========================================================
         // 5. INVENTORY CRUD LOGISTICS HANDLERS
         // =========================================================
+        
+        [HttpGet]
+        public IActionResult Details(int id)
+        {
+            if (HttpContext.Session.GetString("UserSession") == null) return RedirectToAction("Login", "Account");
+            
+            Product product = null;
+            using (var connection = _context.CreateConnection()) {
+                string query = "SELECT F_PRODUCT_ID, F_PROD_NAME, F_BRAND, F_QTY, F_PRICE, F_PROD_DESC, F_PROD_RATING, F_CATEGORY, F_LAUNCH_DATE, F_WEBSITE, F_AI_SUMMARY, F_WIKIPEDIA_URL FROM T_PRODUCTS WHERE F_PRODUCT_ID = @Id";
+                using (var cmd = new SqlCommand(query, (SqlConnection)connection)) {
+                    cmd.Parameters.AddWithValue("@Id", id);
+                    connection.Open();
+                    using (var reader = cmd.ExecuteReader()) {
+                        if (reader.Read()) {
+                            product = new Product {
+                                ProductId = Convert.ToInt32(reader["F_PRODUCT_ID"]),
+                                ProductName = reader["F_PROD_NAME"].ToString() ?? "",
+                                Brand = reader["F_BRAND"].ToString() ?? "",
+                                Quantity = reader["F_QTY"].ToString() ?? "",
+                                Price = Convert.ToDouble(reader["F_PRICE"] == DBNull.Value ? 0 : reader["F_PRICE"]),
+                                ProductDescription = reader["F_PROD_DESC"]?.ToString(),
+                                ProductRating = Convert.ToDouble(reader["F_PROD_RATING"] == DBNull.Value ? 0 : reader["F_PROD_RATING"]),
+                                Category = reader["F_CATEGORY"]?.ToString(),
+                                LaunchDate = reader["F_LAUNCH_DATE"] != DBNull.Value ? Convert.ToDateTime(reader["F_LAUNCH_DATE"]) : (DateTime?)null,
+                                Website = reader["F_WEBSITE"]?.ToString(),
+                                AiSummary = reader["F_AI_SUMMARY"]?.ToString(),
+                                WikipediaUrl = reader["F_WIKIPEDIA_URL"]?.ToString()
+                            };
+                        }
+                    }
+                }
+            }
+            
+            if (product == null) return NotFound();
+            
+            LogActivity("VIEW_DETAILS", $"Viewed detailed AI profile for product: '{product.ProductName}'.");
+            return View(product);
+        }
         [HttpPost]
         public IActionResult AddProduct(Product m)
         {
@@ -911,7 +949,7 @@ namespace ProductHub_MVC.Controllers
         {
             List<Product> list = new List<Product>();
             using (var connection = _context.CreateConnection()) {
-                string query = "SELECT F_PRODUCT_ID, F_PROD_NAME, F_BRAND, F_QTY, F_PRICE, F_PROD_DESC, F_PROD_RATING FROM T_PRODUCTS WHERE 1=1";
+                string query = "SELECT F_PRODUCT_ID, F_PROD_NAME, F_BRAND, F_QTY, F_PRICE, F_PROD_DESC, F_PROD_RATING, F_CATEGORY, F_LAUNCH_DATE, F_WEBSITE, F_AI_SUMMARY, F_WIKIPEDIA_URL FROM T_PRODUCTS WHERE 1=1";
                 if (!string.IsNullOrEmpty(brand) && brand != "ALL") {
                     if (brand.Contains(",")) {
                         var brandList = brand.Split(',').Select(b => b.Trim()).ToList();
@@ -941,6 +979,9 @@ namespace ProductHub_MVC.Controllers
                     cmd.Parameters.AddWithValue("@MinP", minP ?? (object)DBNull.Value);
                     cmd.Parameters.AddWithValue("@MaxP", maxP ?? (object)DBNull.Value);
                     cmd.Parameters.AddWithValue("@MinR", minR ?? (object)DBNull.Value);
+                    if (sort == "Trending") query += " ORDER BY F_PROD_RATING DESC";
+                    else if (sort == "Latest") query += " ORDER BY F_LAUNCH_DATE DESC";
+
                     connection.Open();
                     using (var reader = cmd.ExecuteReader()) {
                         while (reader.Read())
@@ -949,9 +990,14 @@ namespace ProductHub_MVC.Controllers
                                 ProductName = reader["F_PROD_NAME"].ToString() ?? "",
                                 Brand = reader["F_BRAND"].ToString() ?? "",
                                 Quantity = reader["F_QTY"].ToString() ?? "",
-                                Price = Convert.ToDouble(reader["F_PRICE"]),
+                                Price = Convert.ToDouble(reader["F_PRICE"] == DBNull.Value ? 0 : reader["F_PRICE"]),
                                 ProductDescription = reader["F_PROD_DESC"]?.ToString(),
-                                ProductRating = Convert.ToDouble(reader["F_PROD_RATING"])
+                                ProductRating = Convert.ToDouble(reader["F_PROD_RATING"] == DBNull.Value ? 0 : reader["F_PROD_RATING"]),
+                                Category = reader["F_CATEGORY"]?.ToString(),
+                                LaunchDate = reader["F_LAUNCH_DATE"] != DBNull.Value ? Convert.ToDateTime(reader["F_LAUNCH_DATE"]) : (DateTime?)null,
+                                Website = reader["F_WEBSITE"]?.ToString(),
+                                AiSummary = reader["F_AI_SUMMARY"]?.ToString(),
+                                WikipediaUrl = reader["F_WIKIPEDIA_URL"]?.ToString()
                             });
                     }
                 }

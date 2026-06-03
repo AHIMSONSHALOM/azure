@@ -103,68 +103,70 @@
             <div class="saas-card p-0 overflow-hidden">
                 <div class="table-responsive">
                     <form id="checkedItemsForm" method="post">
-                        <table class="saas-table mb-0 text-center">
-                            <thead>
-                                <tr>
-                                    <th style="width: 80px; text-align: center;">#</th>
-                                    @if (ViewBag.CanUseEdit == 1 || ViewBag.CanUseDelete == 1)
-                                    {
-                                        <th style="width: 160px; text-align: center;">Actions</th>
-                                    }
-                                    <th style="width: 60px; text-align: center;"><input type="checkbox" id="selectAllBoxes" class="form-check-input" /></th>
-                                    <th class="text-start">Product Name</th>
-                                    @if (ViewBag.CanSeeBrand == 1) { <th style="text-align: center;">Brand</th> }
-                                    @if (ViewBag.CanSeeQty == 1) { <th style="text-align: center;">Quantity</th> }
-                                    @if (ViewBag.CanSeePrice == 1) { <th style="text-align: center;">Price</th> }
-                                    @if (ViewBag.CanSeeRating == 1) { <th style="text-align: center;">Rating</th> }
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @foreach (var prod in Model)
-                                {
-                                    <tr>
-                                        <td class="text-secondary fw-semibold">@(sequentialNumber++)</td>
-                                        @if (ViewBag.CanUseEdit == 1 || ViewBag.CanUseDelete == 1)
-                                        {
-                                            <td>
-                                                <div class="d-flex justify-content-center gap-1">
-                                                    @if (ViewBag.CanUseEdit == 1)
-                                                    {
-                                                        <button type="button" class="btn btn-sm btn-saas-secondary fw-semibold px-2 py-1" style="font-size: 0.78rem; height: 28px;" onclick="triggerEditModal('@prod.ProductId', '@prod.ProductName', '@prod.Brand', '@prod.Quantity', '@prod.Price', '@prod.ProductRating', '@prod.ProductDescription')">Edit</button>
-                                                    }
-                                                    @if (ViewBag.CanUseDelete == 1)
-                                                    {
-                                                        <button type="button" class="btn btn-sm btn-saas-danger fw-semibold px-2 py-1" style="font-size: 0.78rem; height: 28px;" onclick="triggerDeletePost('@prod.ProductId')">Delete</button>
-                                                    }
-                                                </div>
-                                            </td>
+                        <!-- Feed Header -->
+                        <div class="flex justify-between items-center mb-6 px-2">
+                            <h2 class="text-2xl font-extrabold text-gray-800 tracking-tight">Product Feed <span class="text-blue-500 text-sm align-top ml-2">@Model.Count() items</span></h2>
+                            <div class="flex items-center space-x-4">
+                                <a href="?sortBy=Latest" class="text-sm font-semibold text-gray-600 hover:text-blue-600 transition">Latest Launches</a>
+                                <a href="?sortBy=Trending" class="text-sm font-semibold text-gray-600 hover:text-blue-600 transition">🔥 Trending</a>
+                            </div>
+                        </div>
+
+                        <!-- Tailwind Grid of Products -->
+                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                            @foreach (var prod in Model)
+                            {
+                                <div class="bg-white rounded-2xl shadow-sm border border-gray-100 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 overflow-hidden relative group flex flex-col h-full">
+                                    <div class="absolute top-4 left-4 z-10 flex items-center space-x-2">
+                                        <input type="checkbox" name="ids" value="@prod.ProductId" class="w-5 h-5 text-blue-600 rounded focus:ring-blue-500 form-check-input row-item-checkbox shadow-sm cursor-pointer" />
+                                    </div>
+                                    <div class="absolute top-4 right-4 z-10 bg-white/90 backdrop-blur-md px-3 py-1 rounded-full text-xs font-bold shadow-sm border border-gray-100">
+                                        <span class="text-yellow-500">★</span> @prod.ProductRating.ToString("0.0")
+                                    </div>
+
+                                    <!-- Product Image Placeholder (Gradient) -->
+                                    <div class="h-40 w-full bg-gradient-to-br from-indigo-50 to-blue-100 flex items-center justify-center p-6 relative">
+                                        <i class="fa-solid fa-cube text-indigo-300 text-5xl"></i>
+                                    </div>
+
+                                    <!-- Product Details -->
+                                    <div class="p-6 flex-grow flex flex-col">
+                                        <div class="flex justify-between items-start mb-2">
+                                            <h3 class="text-lg font-bold text-gray-900 leading-tight">@prod.ProductName</h3>
+                                            @if (ViewBag.CanSeePrice == 1) { 
+                                                <span class="text-lg font-extrabold text-green-600 bg-green-50 px-2 py-1 rounded-lg">Rs.@prod.Price.ToString("N0")</span>
+                                            }
+                                        </div>
+                                        
+                                        @if (ViewBag.CanSeeBrand == 1) {
+                                            <p class="text-sm text-gray-500 font-medium mb-3">by <span class="text-blue-600">@prod.Brand</span></p>
                                         }
-                                        <td><input type="checkbox" name="ids" value="@prod.ProductId" class="form-check-input row-item-checkbox" /></td>
-                                        <td class="text-start fw-semibold text-dark">@prod.ProductName</td>
-                                        @if (ViewBag.CanSeeBrand == 1) { 
-                                            <td>
-                                                @{
-                                                    string brandLower = prod.Brand?.ToLower() ?? "";
-                                                    string brandBadgeClass = "brand-badge-default";
-                                                    if (brandLower.Contains("apple")) brandBadgeClass = "brand-badge-apple";
-                                                    else if (brandLower.Contains("samsung")) brandBadgeClass = "brand-badge-samsung";
-                                                    else if (brandLower.Contains("google")) brandBadgeClass = "brand-badge-google";
+
+                                        <p class="text-gray-600 text-sm line-clamp-3 mb-4 flex-grow">
+                                            @(string.IsNullOrEmpty(prod.ProductDescription) ? "No description available for this product yet. Click to view more details and AI insights." : prod.ProductDescription)
+                                        </p>
+
+                                        <!-- Footer Actions -->
+                                        <div class="pt-4 border-t border-gray-100 flex justify-between items-center mt-auto">
+                                            <a href="/Product/Details/@prod.ProductId" class="inline-flex items-center text-sm font-semibold text-blue-600 hover:text-blue-800 transition">
+                                                View Details <i class="fa-solid fa-arrow-right ml-1 text-xs"></i>
+                                            </a>
+                                            
+                                            <div class="flex space-x-2">
+                                                @if (ViewBag.CanUseEdit == 1)
+                                                {
+                                                    <button type="button" class="w-8 h-8 rounded-full bg-gray-50 hover:bg-indigo-100 text-indigo-600 flex items-center justify-center transition" onclick="triggerEditModal('@prod.ProductId', '@prod.ProductName', '@prod.Brand', '@prod.Quantity', '@prod.Price', '@prod.ProductRating', '@prod.ProductDescription')"><i class="fa-solid fa-pen text-xs"></i></button>
                                                 }
-                                                <span class="brand-badge @brandBadgeClass">@prod.Brand</span>
-                                            </td>
-                                        }
-                                        @if (ViewBag.CanSeeQty == 1) { <td class="text-secondary">@prod.Quantity</td> }
-                                        @if (ViewBag.CanSeePrice == 1) { <td class="text-success fw-bold">Rs. @prod.Price.ToString("N2")</td> }
-                                        @if (ViewBag.CanSeeRating == 1) { 
-                                            <td class="fw-semibold text-nowrap">
-                                                <span class="rating-stars">@GetStarRating(prod.ProductRating)</span> 
-                                                <span class="text-secondary ms-1" style="font-size: 0.85rem;">@prod.ProductRating.ToString("0.0")</span>
-                                            </td> 
-                                        }
-                                    </tr>
-                                }
-                            </tbody>
-                        </table>
+                                                @if (ViewBag.CanUseDelete == 1)
+                                                {
+                                                    <button type="button" class="w-8 h-8 rounded-full bg-gray-50 hover:bg-red-100 text-red-600 flex items-center justify-center transition" onclick="triggerDeletePost('@prod.ProductId')"><i class="fa-solid fa-trash text-xs"></i></button>
+                                                }
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                        </div>
                     </form>
                 </div>
             </div>

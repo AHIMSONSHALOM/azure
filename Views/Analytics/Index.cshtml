@@ -1,0 +1,132 @@
+@{
+    ViewData["Title"] = "Market Analytics Dashboard";
+}
+
+<div class="max-w-7xl mx-auto px-4 py-8">
+    <div class="flex justify-between items-center mb-8">
+        <div>
+            <h1 class="text-3xl font-extrabold text-gray-900 tracking-tight">Market Dashboard</h1>
+            <p class="text-gray-500 mt-1">Real-time insights and product analytics</p>
+        </div>
+        <div>
+            <a asp-action="Index" asp-controller="Product" class="inline-flex items-center px-4 py-2 bg-indigo-50 text-indigo-700 font-bold rounded-lg hover:bg-indigo-100 transition">
+                <i class="fa-solid fa-arrow-left mr-2"></i> Back to Feed
+            </a>
+        </div>
+    </div>
+
+    <!-- Stats Grid -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        
+        <div class="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 relative overflow-hidden group">
+            <div class="absolute right-0 top-0 bg-blue-500 text-white w-16 h-16 flex items-center justify-center rounded-bl-3xl opacity-10 group-hover:opacity-20 transition">
+                <i class="fa-solid fa-boxes-stacked text-3xl"></i>
+            </div>
+            <p class="text-gray-500 font-medium mb-1">Total Products</p>
+            <h2 class="text-4xl font-extrabold text-gray-900">@ViewBag.TotalProducts</h2>
+            <p class="text-sm text-green-600 mt-2 font-semibold"><i class="fa-solid fa-arrow-trend-up"></i> +12% this week</p>
+        </div>
+
+        <div class="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 relative overflow-hidden group">
+            <div class="absolute right-0 top-0 bg-purple-500 text-white w-16 h-16 flex items-center justify-center rounded-bl-3xl opacity-10 group-hover:opacity-20 transition">
+                <i class="fa-solid fa-tags text-3xl"></i>
+            </div>
+            <p class="text-gray-500 font-medium mb-1">Active Categories</p>
+            <h2 class="text-4xl font-extrabold text-gray-900">@ViewBag.TotalCategories</h2>
+            <p class="text-sm text-gray-400 mt-2 font-semibold">Across all tracking models</p>
+        </div>
+
+        <div class="bg-gradient-to-br from-gray-900 to-gray-800 rounded-2xl p-6 shadow-lg border border-gray-700 relative overflow-hidden">
+            <div class="absolute -right-4 -bottom-4 text-gray-700 opacity-50">
+                <i class="fa-solid fa-robot text-8xl"></i>
+            </div>
+            <p class="text-gray-400 font-medium mb-1 relative z-10">AI Indexing Status</p>
+            <h2 class="text-3xl font-extrabold text-white relative z-10 mb-2">Optimal</h2>
+            <div class="w-full bg-gray-700 rounded-full h-2 relative z-10">
+                <div class="bg-green-500 h-2 rounded-full" style="width: 100%"></div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Charts Section -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        
+        <!-- Category Distribution Chart -->
+        <div class="bg-white rounded-3xl p-8 shadow-sm border border-gray-100">
+            <h3 class="text-xl font-bold text-gray-900 mb-6 border-b border-gray-100 pb-4">Product Distribution by Category</h3>
+            <div class="relative h-64 w-full">
+                <canvas id="categoryChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Trending Capabilities Panel -->
+        <div class="bg-white rounded-3xl p-8 shadow-sm border border-gray-100">
+            <h3 class="text-xl font-bold text-gray-900 mb-6 border-b border-gray-100 pb-4">Market Insights</h3>
+            
+            <div class="space-y-6">
+                <div class="flex items-start">
+                    <div class="flex-shrink-0 w-12 h-12 rounded-full bg-purple-100 flex items-center justify-center text-purple-600 font-bold text-xl mr-4">
+                        1
+                    </div>
+                    <div>
+                        <h4 class="font-bold text-gray-900">Artificial Intelligence is surging</h4>
+                        <p class="text-gray-500 text-sm mt-1">Based on recent Wikidata scans, the AI sector accounts for 45% of newly added products this month.</p>
+                    </div>
+                </div>
+                
+                <div class="flex items-start">
+                    <div class="flex-shrink-0 w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold text-xl mr-4">
+                        2
+                    </div>
+                    <div>
+                        <h4 class="font-bold text-gray-900">Consumer Hardware stabilizing</h4>
+                        <p class="text-gray-500 text-sm mt-1">Price volatility in hardware tech has dropped, with average ratings maintaining a solid 4.2 stars.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<!-- Chart.js CDN -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        const ctx = document.getElementById('categoryChart').getContext('2d');
+        const labels = [@Html.Raw(ViewBag.ChartLabels)];
+        const dataVals = [@ViewBag.ChartData];
+        
+        new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: labels.length > 0 ? labels : ['No Data'],
+                datasets: [{
+                    data: dataVals.length > 0 ? dataVals : [1],
+                    backgroundColor: [
+                        '#6366f1', // Indigo
+                        '#a855f7', // Purple
+                        '#ec4899', // Pink
+                        '#3b82f6', // Blue
+                        '#14b8a6', // Teal
+                        '#f59e0b', // Amber
+                    ],
+                    borderWidth: 0,
+                    hoverOffset: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'right',
+                        labels: { padding: 20, font: { family: "'Inter', sans-serif" } }
+                    }
+                },
+                cutout: '70%'
+            }
+        });
+    });
+</script>

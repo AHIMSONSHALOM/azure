@@ -11,6 +11,9 @@ namespace ProductHub_MVC.Data
         }
 
         public DbSet<UserSession> UserSessions => Set<UserSession>();
+        public DbSet<Company> Companies => Set<Company>();
+        public DbSet<Analytics> AnalyticsData => Set<Analytics>();
+        public DbSet<Product> Products => Set<Product>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
