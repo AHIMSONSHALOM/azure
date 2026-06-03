@@ -20,6 +20,11 @@
     <!-- Top Dashboard Header with Premium Buttons -->
     <div class="saas-card mb-0 border-0 shadow-sm p-3 p-lg-4">
         <div class="d-flex flex-wrap justify-content-start justify-content-md-end gap-2 w-100">
+            <form asp-action="SyncLiveFeeds" method="post" style="display:inline-block;" onsubmit="showSyncLoading()">
+                <button type="submit" id="btnSyncFeeds" class="btn btn-saas-primary" style="background: linear-gradient(135deg, #3b82f6, #8b5cf6); border: none;">
+                    <i class="fa-solid fa-rotate me-1" id="syncIcon"></i> <span id="syncText">Sync Live Products</span>
+                </button>
+            </form>
             @if (ViewBag.CanAddRow == 1)
             {
                 <button class="btn btn-saas-primary" data-bs-toggle="modal" data-bs-target="#addProductModal">
@@ -107,8 +112,8 @@
                         <div class="flex justify-between items-center mb-6 px-2">
                             <h2 class="text-2xl font-extrabold text-gray-800 tracking-tight">Product Feed <span class="text-blue-500 text-sm align-top ml-2">@Model.Count() items</span></h2>
                             <div class="flex items-center space-x-4">
-                                <a href="?sortBy=Latest" class="text-sm font-semibold text-gray-600 hover:text-blue-600 transition">Latest Launches</a>
-                                <a href="?sortBy=Trending" class="text-sm font-semibold text-gray-600 hover:text-blue-600 transition">🔥 Trending</a>
+                                <a href="javascript:void(0);" onclick="applySort('Latest')" class="text-sm font-semibold text-gray-600 hover:text-blue-600 transition">Latest Launches</a>
+                                <a href="javascript:void(0);" onclick="applySort('Trending')" class="text-sm font-semibold text-gray-600 hover:text-blue-600 transition">🔥 Trending</a>
                             </div>
                         </div>
 
@@ -124,10 +129,20 @@
                                         <span class="text-yellow-500">★</span> @prod.ProductRating.ToString("0.0")
                                     </div>
 
-                                    <!-- Product Image Placeholder (Gradient) -->
-                                    <div class="h-40 w-full bg-gradient-to-br from-indigo-50 to-blue-100 flex items-center justify-center p-6 relative">
-                                        <i class="fa-solid fa-cube text-indigo-300 text-5xl"></i>
-                                    </div>
+                                    <!-- Product Image -->
+                                    @if (!string.IsNullOrEmpty(prod.ImageUrl))
+                                    {
+                                        <div class="h-40 w-full overflow-hidden relative">
+                                            <img src="@prod.ImageUrl" alt="@prod.ProductName" class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <!-- Product Image Placeholder (Gradient) -->
+                                        <div class="h-40 w-full bg-gradient-to-br from-indigo-50 to-blue-100 flex items-center justify-center p-6 relative">
+                                            <i class="fa-solid fa-cube text-indigo-300 text-5xl"></i>
+                                        </div>
+                                    }
 
                                     <!-- Product Details -->
                                     <div class="p-6 flex-grow flex flex-col">
@@ -146,9 +161,27 @@
                                             @(string.IsNullOrEmpty(prod.ProductDescription) ? "No description available for this product yet. Click to view more details and AI insights." : prod.ProductDescription)
                                         </p>
 
+                                        @if (!string.IsNullOrEmpty(prod.ArticleUrl) || !string.IsNullOrEmpty(prod.WikipediaUrl))
+                                        {
+                                            <div class="flex flex-wrap gap-2 mb-3">
+                                                @if (!string.IsNullOrEmpty(prod.ArticleUrl))
+                                                {
+                                                    <a href="@prod.ArticleUrl" target="_blank" class="inline-flex items-center gap-1 text-xs bg-gray-100 hover:bg-blue-50 text-gray-700 hover:text-blue-700 font-semibold px-2.5 py-1 rounded-full transition no-underline">
+                                                        <i class="fa-solid fa-newspaper text-blue-500"></i> Source
+                                                    </a>
+                                                }
+                                                @if (!string.IsNullOrEmpty(prod.WikipediaUrl))
+                                                {
+                                                    <a href="@prod.WikipediaUrl" target="_blank" class="inline-flex items-center gap-1 text-xs bg-gray-100 hover:bg-purple-50 text-gray-700 hover:text-purple-700 font-semibold px-2.5 py-1 rounded-full transition no-underline">
+                                                        <i class="fa-brands fa-wikipedia-w text-purple-500"></i> Wikipedia
+                                                    </a>
+                                                }
+                                            </div>
+                                        }
+
                                         <!-- Footer Actions -->
                                         <div class="pt-4 border-t border-gray-100 flex justify-between items-center mt-auto">
-                                            <a href="/Product/Details/@prod.ProductId" class="inline-flex items-center text-sm font-semibold text-blue-600 hover:text-blue-800 transition">
+                                            <a href="/Product/Details/@prod.ProductId" class="inline-flex items-center text-sm font-semibold text-blue-600 hover:text-blue-800 transition no-underline">
                                                 View Details <i class="fa-solid fa-arrow-right ml-1 text-xs"></i>
                                             </a>
                                             
@@ -239,6 +272,22 @@
 </div>
 
 <script>
+    function applySort(sortValue) {
+        document.querySelector('#filterForm input[name="sortBy"]').value = sortValue;
+        document.getElementById('filterForm').submit();
+    }
+    
+    function showSyncLoading() {
+        const btn = document.getElementById('btnSyncFeeds');
+        const icon = document.getElementById('syncIcon');
+        const text = document.getElementById('syncText');
+        if (icon) {
+            icon.className = 'fa-solid fa-spinner fa-spin me-1';
+        }
+        if (text) text.innerText = 'Syncing Live Products...';
+        setTimeout(() => { if (btn) btn.disabled = true; }, 50);
+    }
+    
     document.getElementById('selectAllBoxes').addEventListener('change', function() {
         let boxes = document.querySelectorAll('.row-item-checkbox');
         boxes.forEach(box => box.checked = this.checked);

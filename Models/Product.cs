@@ -46,5 +46,11 @@ namespace ProductHub_MVC.Models
 
         [Column("F_WIKIPEDIA_URL")]
         public string? WikipediaUrl { get; set; }
+
+        [Column("F_IMAGE_URL")]
+        public string? ImageUrl { get; set; }
+
+        [Column("F_ARTICLE_URL")]
+        public string? ArticleUrl { get; set; }
     }
 }

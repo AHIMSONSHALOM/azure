@@ -51,11 +51,20 @@ async def chat_with_ollama(request: ChatRequest):
         ]
         
         response = ollama.chat(model='tinyllama', messages=messages)
-        
         return {"reply": response['message']['content']}
     
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        # Fallback simulated AI response when Ollama is not installed
+        reply = f"🤖 **Simulated AI Reply:**\n\nI see you are asking about **{request.product_name}**. "
+        reply += "Since the local Ollama AI engine is not installed on your machine, I am providing a simulated response for demonstration purposes! "
+        reply += f"Based on its description: '{request.product_description[:100]}...', this looks like a great product!"
+        
+        if "price" in request.user_message.lower():
+            reply += "\n\n💰 Regarding pricing: The price varies based on market demand, but it offers excellent value!"
+        elif "feature" in request.user_message.lower() or "what" in request.user_message.lower():
+            reply += "\n\n✨ Key features include its premium build quality, modern design, and robust capabilities."
+            
+        return {"reply": reply}
 
 if __name__ == "__main__":
     import uvicorn

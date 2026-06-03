@@ -13,6 +13,7 @@ builder.Services.AddControllersWithViews();
 
 // Register your custom MS-SQL Database Context Utility
 builder.Services.AddScoped<SqlDbContext>();
+builder.Services.AddScoped<ProductHub_MVC.Services.InternetDiscoveryService>();
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("ProductHubSqlConnection")));
 builder.Services.AddHostedService<ProductHub_MVC.Services.DatabaseSyncService>();

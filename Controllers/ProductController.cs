@@ -21,11 +21,13 @@ namespace ProductHub_MVC.Controllers
     {
         private readonly SqlDbContext _context;
         private readonly IConfiguration _configuration;
+        private readonly Services.InternetDiscoveryService _discoveryService;
 
-        public ProductController(SqlDbContext context, IConfiguration configuration)
+        public ProductController(SqlDbContext context, IConfiguration configuration, Services.InternetDiscoveryService discoveryService)
         {
             _context = context;
             _configuration = configuration;
+            _discoveryService = discoveryService;
         }
 
         // Centralized tracking helper engine to write audit logs smoothly
@@ -514,7 +516,7 @@ namespace ProductHub_MVC.Controllers
             
             Product product = null;
             using (var connection = _context.CreateConnection()) {
-                string query = "SELECT F_PRODUCT_ID, F_PROD_NAME, F_BRAND, F_QTY, F_PRICE, F_PROD_DESC, F_PROD_RATING, F_CATEGORY, F_LAUNCH_DATE, F_WEBSITE, F_AI_SUMMARY, F_WIKIPEDIA_URL FROM T_PRODUCTS WHERE F_PRODUCT_ID = @Id";
+                string query = "SELECT F_PRODUCT_ID, F_PROD_NAME, F_BRAND, F_QTY, F_PRICE, F_PROD_DESC, F_PROD_RATING, F_CATEGORY, F_LAUNCH_DATE, F_WEBSITE, F_AI_SUMMARY, F_WIKIPEDIA_URL, F_IMAGE_URL, F_ARTICLE_URL FROM T_PRODUCTS WHERE F_PRODUCT_ID = @Id";
                 using (var cmd = new SqlCommand(query, (SqlConnection)connection)) {
                     cmd.Parameters.AddWithValue("@Id", id);
                     connection.Open();
@@ -532,7 +534,9 @@ namespace ProductHub_MVC.Controllers
                                 LaunchDate = reader["F_LAUNCH_DATE"] != DBNull.Value ? Convert.ToDateTime(reader["F_LAUNCH_DATE"]) : (DateTime?)null,
                                 Website = reader["F_WEBSITE"]?.ToString(),
                                 AiSummary = reader["F_AI_SUMMARY"]?.ToString(),
-                                WikipediaUrl = reader["F_WIKIPEDIA_URL"]?.ToString()
+                                WikipediaUrl = reader["F_WIKIPEDIA_URL"]?.ToString(),
+                                ImageUrl = reader["F_IMAGE_URL"]?.ToString(),
+                                ArticleUrl = reader["F_ARTICLE_URL"]?.ToString()
                             };
                         }
                     }
@@ -599,6 +603,32 @@ namespace ProductHub_MVC.Controllers
                 }
             }
             LogActivity("DELETE", $"Removed item row permanently from product catalog: '{namePlaceholder}'.");
+            return RedirectToAction(nameof(Index));
+        }
+
+        [HttpPost]
+        public async Task<IActionResult> SyncLiveFeeds()
+        {
+            if (HttpContext.Session.GetString("UserSession") == null) return RedirectToAction("Login", "Account");
+            if (!IsSessionValid())
+            {
+                HttpContext.Session.Clear();
+                TempData["ErrorMessage"] = "⚠️ Session Terminated: Your account has been logged in on another machine.";
+                return RedirectToAction("Login", "Account");
+            }
+
+            try
+            {
+                LogActivity("SYNC_FEEDS", "Triggered live internet products synchronization via RSS feeds.");
+                int syncedCount = await _discoveryService.SyncLiveFeedsAsync();
+                TempData["SuccessMessage"] = $"✅ Discovered and synchronized {syncedCount} new live tech products successfully!";
+            }
+            catch (Exception ex)
+            {
+                TempData["ErrorMessage"] = $"❌ Failed to sync live feeds: {ex.Message}";
+                LogActivity("SYNC_FEEDS_FAIL", $"RSS sync failed: {ex.Message}");
+            }
+
             return RedirectToAction(nameof(Index));
         }
 
@@ -949,7 +979,7 @@ namespace ProductHub_MVC.Controllers
         {
             List<Product> list = new List<Product>();
             using (var connection = _context.CreateConnection()) {
-                string query = "SELECT F_PRODUCT_ID, F_PROD_NAME, F_BRAND, F_QTY, F_PRICE, F_PROD_DESC, F_PROD_RATING, F_CATEGORY, F_LAUNCH_DATE, F_WEBSITE, F_AI_SUMMARY, F_WIKIPEDIA_URL FROM T_PRODUCTS WHERE 1=1";
+                string query = "SELECT F_PRODUCT_ID, F_PROD_NAME, F_BRAND, F_QTY, F_PRICE, F_PROD_DESC, F_PROD_RATING, F_CATEGORY, F_LAUNCH_DATE, F_WEBSITE, F_AI_SUMMARY, F_WIKIPEDIA_URL, F_IMAGE_URL, F_ARTICLE_URL FROM T_PRODUCTS WHERE 1=1";
                 if (!string.IsNullOrEmpty(brand) && brand != "ALL") {
                     if (brand.Contains(",")) {
                         var brandList = brand.Split(',').Select(b => b.Trim()).ToList();
@@ -982,6 +1012,7 @@ namespace ProductHub_MVC.Controllers
                     if (sort == "Trending") query += " ORDER BY F_PROD_RATING DESC";
                     else if (sort == "Latest") query += " ORDER BY F_LAUNCH_DATE DESC";
 
+                    cmd.CommandText = query; // Apply the updated query with ORDER BY
                     connection.Open();
                     using (var reader = cmd.ExecuteReader()) {
                         while (reader.Read())
@@ -997,7 +1028,9 @@ namespace ProductHub_MVC.Controllers
                                 LaunchDate = reader["F_LAUNCH_DATE"] != DBNull.Value ? Convert.ToDateTime(reader["F_LAUNCH_DATE"]) : (DateTime?)null,
                                 Website = reader["F_WEBSITE"]?.ToString(),
                                 AiSummary = reader["F_AI_SUMMARY"]?.ToString(),
-                                WikipediaUrl = reader["F_WIKIPEDIA_URL"]?.ToString()
+                                WikipediaUrl = reader["F_WIKIPEDIA_URL"]?.ToString(),
+                                ImageUrl = reader["F_IMAGE_URL"]?.ToString(),
+                                ArticleUrl = reader["F_ARTICLE_URL"]?.ToString()
                             });
                     }
                 }
