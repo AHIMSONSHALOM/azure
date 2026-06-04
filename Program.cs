@@ -14,9 +14,14 @@ builder.Services.AddControllersWithViews();
 // Register your custom MS-SQL Database Context Utility
 builder.Services.AddScoped<SqlDbContext>();
 builder.Services.AddScoped<ProductHub_MVC.Services.InternetDiscoveryService>();
+builder.Services.AddMemoryCache();
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("ProductHubSqlConnection")));
 builder.Services.AddHostedService<ProductHub_MVC.Services.DatabaseSyncService>();
+builder.Services.AddHostedService<ProductHub_MVC.Services.ProductSyncService>();
+builder.Services.AddHostedService<ProductHub_MVC.Services.ProductEnrichmentService>();
+builder.Services.AddHostedService<ProductHub_MVC.Services.ImageCollectionService>();
+builder.Services.AddHostedService<ProductHub_MVC.Services.ProductRefreshService>();
 
 // Register Cookie and Google Authentication services
 builder.Services.AddAuthentication(options =>

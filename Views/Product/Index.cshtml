@@ -14,52 +14,83 @@
         }
         return stars;
     }
+
+    public string GetCleanDescription(string rawDesc) {
+        if (string.IsNullOrEmpty(rawDesc)) return "No description available for this product yet. Click to view more details and AI insights.";
+        if (!rawDesc.Trim().StartsWith("{")) return rawDesc;
+        try {
+            using var doc = System.Text.Json.JsonDocument.Parse(rawDesc);
+            if (doc.RootElement.TryGetProperty("description", out var prop)) {
+                return prop.GetString() ?? rawDesc;
+            }
+        } catch { }
+        return rawDesc;
+    }
 }
 
 <div class="container-fluid mt-1 saas-grid-gap">
     <!-- Top Dashboard Header with Premium Buttons -->
     <div class="saas-card mb-0 border-0 shadow-sm p-3 p-lg-4">
-        <div class="d-flex flex-wrap justify-content-start justify-content-md-end gap-2 w-100">
-            <form asp-action="SyncLiveFeeds" method="post" style="display:inline-block;" onsubmit="showSyncLoading()">
-                <button type="submit" id="btnSyncFeeds" class="btn btn-saas-primary" style="background: linear-gradient(135deg, #3b82f6, #8b5cf6); border: none;">
-                    <i class="fa-solid fa-rotate me-1" id="syncIcon"></i> <span id="syncText">Sync Live Products</span>
-                </button>
-            </form>
+        <div class="row g-2 align-items-stretch w-100 m-0">
+            <div class="col-12 col-sm-6 col-md-4 col-lg-3 col-xl">
+                <a href="/Product/Dashboard" class="btn btn-saas-secondary w-100 h-100 justify-content-center text-nowrap" style="background: linear-gradient(135deg, #10b981, #059669); border: none; color: white;">
+                    <i class="fa-solid fa-chart-simple me-1"></i> Market Dashboard
+                </a>
+            </div>
+            <div class="col-12 col-sm-6 col-md-4 col-lg-3 col-xl">
+                <form asp-action="SyncLiveFeeds" method="post" class="w-100 h-100 m-0" onsubmit="showSyncLoading()">
+                    <button type="submit" id="btnSyncFeeds" class="btn btn-saas-primary w-100 h-100 justify-content-center text-nowrap" style="background: linear-gradient(135deg, #3b82f6, #8b5cf6); border: none;">
+                        <i class="fa-solid fa-rotate me-1" id="syncIcon"></i> <span id="syncText">Sync Live Products</span>
+                    </button>
+                </form>
+            </div>
             @if (ViewBag.CanAddRow == 1)
             {
-                <button class="btn btn-saas-primary" data-bs-toggle="modal" data-bs-target="#addProductModal">
-                    <i class="fa-solid fa-plus me-1"></i> Add Product
-                </button>
+                <div class="col-12 col-sm-6 col-md-4 col-lg-3 col-xl">
+                    <button class="btn btn-saas-primary w-100 h-100 justify-content-center text-nowrap" data-bs-toggle="modal" data-bs-target="#addProductModal">
+                        <i class="fa-solid fa-plus me-1"></i> Add Product
+                    </button>
+                </div>
             }
             @if (ViewBag.CanDownload == 1)
             {
-                <a asp-action="DownloadTemplate" class="btn btn-saas-secondary">
-                    <i class="fa-solid fa-download me-1"></i> Download Template
-                </a>
+                <div class="col-12 col-sm-6 col-md-4 col-lg-3 col-xl">
+                    <a asp-action="DownloadTemplate" class="btn btn-saas-secondary w-100 h-100 justify-content-center text-nowrap">
+                        <i class="fa-solid fa-download me-1"></i> Download Template
+                    </a>
+                </div>
             }
             @if (ViewBag.CanImport == 1)
             {
-                <button class="btn btn-saas-secondary" data-bs-toggle="modal" data-bs-target="#importExcelModal">
-                    <i class="fa-solid fa-file-import me-1"></i> Import Excel
-                </button>
+                <div class="col-12 col-sm-6 col-md-4 col-lg-3 col-xl">
+                    <button class="btn btn-saas-secondary w-100 h-100 justify-content-center text-nowrap" data-bs-toggle="modal" data-bs-target="#importExcelModal">
+                        <i class="fa-solid fa-file-import me-1"></i> Import Excel
+                    </button>
+                </div>
             }
             @if (ViewBag.CanExport == 1)
             {
-                <a href="#" onclick="triggerExport()" class="btn btn-saas-secondary">
-                    <i class="fa-solid fa-file-export me-1"></i> Export Excel
-                </a>
+                <div class="col-12 col-sm-6 col-md-4 col-lg-3 col-xl">
+                    <a href="#" onclick="triggerExport()" class="btn btn-saas-secondary w-100 h-100 justify-content-center text-nowrap">
+                        <i class="fa-solid fa-file-export me-1"></i> Export Excel
+                    </a>
+                </div>
             }
             @if (ViewBag.CanCompare == 1)
             {
-                <button type="button" onclick="triggerComparison()" class="btn btn-saas-primary">
-                    <i class="fa-solid fa-code-compare me-1"></i> Compare Products
-                </button>
+                <div class="col-12 col-sm-6 col-md-4 col-lg-3 col-xl">
+                    <button type="button" onclick="triggerComparison()" class="btn btn-saas-primary w-100 h-100 justify-content-center text-nowrap">
+                        <i class="fa-solid fa-code-compare me-1"></i> Compare Products
+                    </button>
+                </div>
             }
             @if (ViewBag.CanEmail == 1)
             {
-                <button type="button" data-bs-toggle="modal" data-bs-target="#dispatchCheckedEmailModal" class="btn btn-saas-primary">
-                    <i class="fa-solid fa-envelope me-1"></i> Email Data
-                </button>
+                <div class="col-12 col-sm-6 col-md-4 col-lg-3 col-xl">
+                    <button type="button" data-bs-toggle="modal" data-bs-target="#dispatchCheckedEmailModal" class="btn btn-saas-primary w-100 h-100 justify-content-center text-nowrap">
+                        <i class="fa-solid fa-envelope me-1"></i> Email Data
+                    </button>
+                </div>
             }
         </div>
     </div>
@@ -100,6 +131,46 @@
                     <button type="submit" class="btn btn-saas-primary w-100 fw-bold py-2 mb-2">Apply Filters</button>
                     <a asp-action="Index" class="btn btn-saas-secondary w-100 fw-semibold py-2">Reset Filters</a>
                 </form>
+                
+                <div class="mt-4 pt-4 border-top border-secondary border-opacity-10">
+                    <h5 class="saas-sidebar-title mb-3 fs-6">
+                        <i class="fa-solid fa-tags text-primary me-2"></i>Categories
+                    </h5>
+                    <div class="list-group list-group-flush border-0">
+                        <a href="/Product/Category?cat=Mobiles" class="list-group-item list-group-item-action bg-transparent border-0 py-2 px-1 d-flex justify-content-between align-items-center">
+                            <span class="text-dark fw-semibold"><i class="fa-solid fa-mobile-screen me-2 text-primary"></i> Mobiles</span>
+                            <i class="fa-solid fa-chevron-right text-muted small"></i>
+                        </a>
+                        <a href="/Product/Category?cat=Electronics" class="list-group-item list-group-item-action bg-transparent border-0 py-2 px-1 d-flex justify-content-between align-items-center">
+                            <span class="text-dark fw-semibold"><i class="fa-solid fa-laptop me-2 text-primary"></i> Electronics</span>
+                            <i class="fa-solid fa-chevron-right text-muted small"></i>
+                        </a>
+                        <a href="/Product/Category?cat=Home+Appliances" class="list-group-item list-group-item-action bg-transparent border-0 py-2 px-1 d-flex justify-content-between align-items-center">
+                            <span class="text-dark fw-semibold"><i class="fa-solid fa-house-chimney me-2 text-primary"></i> Home Appliances</span>
+                            <i class="fa-solid fa-chevron-right text-muted small"></i>
+                        </a>
+                        <a href="/Product/Category?cat=Grocery" class="list-group-item list-group-item-action bg-transparent border-0 py-2 px-1 d-flex justify-content-between align-items-center">
+                            <span class="text-dark fw-semibold"><i class="fa-solid fa-basket-shopping me-2 text-primary"></i> Grocery</span>
+                            <i class="fa-solid fa-chevron-right text-muted small"></i>
+                        </a>
+                        <a href="/Product/Category?cat=Plumbing+Materials" class="list-group-item list-group-item-action bg-transparent border-0 py-2 px-1 d-flex justify-content-between align-items-center">
+                            <span class="text-dark fw-semibold"><i class="fa-solid fa-faucet-drip me-2 text-primary"></i> Plumbing Materials</span>
+                            <i class="fa-solid fa-chevron-right text-muted small"></i>
+                        </a>
+                        <a href="/Product/Category?cat=Electrical+Materials" class="list-group-item list-group-item-action bg-transparent border-0 py-2 px-1 d-flex justify-content-between align-items-center">
+                            <span class="text-dark fw-semibold"><i class="fa-solid fa-plug me-2 text-primary"></i> Electrical Materials</span>
+                            <i class="fa-solid fa-chevron-right text-muted small"></i>
+                        </a>
+                        <a href="/Product/Category?cat=Hardware+%26+Tools" class="list-group-item list-group-item-action bg-transparent border-0 py-2 px-1 d-flex justify-content-between align-items-center">
+                            <span class="text-dark fw-semibold"><i class="fa-solid fa-hammer me-2 text-primary"></i> Hardware & Tools</span>
+                            <i class="fa-solid fa-chevron-right text-muted small"></i>
+                        </a>
+                        <a href="/Product/Category?cat=Furniture" class="list-group-item list-group-item-action bg-transparent border-0 py-2 px-1 d-flex justify-content-between align-items-center">
+                            <span class="text-dark fw-semibold"><i class="fa-solid fa-chair me-2 text-primary"></i> Furniture</span>
+                            <i class="fa-solid fa-chevron-right text-muted small"></i>
+                        </a>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -158,7 +229,7 @@
                                         }
 
                                         <p class="text-gray-600 text-sm line-clamp-3 mb-4 flex-grow">
-                                            @(string.IsNullOrEmpty(prod.ProductDescription) ? "No description available for this product yet. Click to view more details and AI insights." : prod.ProductDescription)
+                                            @GetCleanDescription(prod.ProductDescription)
                                         </p>
 
                                         @if (!string.IsNullOrEmpty(prod.ArticleUrl) || !string.IsNullOrEmpty(prod.WikipediaUrl))
@@ -188,7 +259,7 @@
                                             <div class="flex space-x-2">
                                                 @if (ViewBag.CanUseEdit == 1)
                                                 {
-                                                    <button type="button" class="w-8 h-8 rounded-full bg-gray-50 hover:bg-indigo-100 text-indigo-600 flex items-center justify-center transition" onclick="triggerEditModal('@prod.ProductId', '@prod.ProductName', '@prod.Brand', '@prod.Quantity', '@prod.Price', '@prod.ProductRating', '@prod.ProductDescription')"><i class="fa-solid fa-pen text-xs"></i></button>
+                                                    <button type="button" class="w-8 h-8 rounded-full bg-gray-50 hover:bg-indigo-100 text-indigo-600 flex items-center justify-center transition" onclick="triggerEditModal('@prod.ProductId', '@prod.ProductName', '@prod.Brand', '@prod.Quantity', '@prod.Price', '@prod.ProductRating', '@prod.ProductDescription', '@prod.Category', '@prod.Subcategory')"><i class="fa-solid fa-pen text-xs"></i></button>
                                                 }
                                                 @if (ViewBag.CanUseDelete == 1)
                                                 {
@@ -215,6 +286,31 @@
                 <div class="modal-body p-4 small">
                     <div class="mb-3"><label class="form-label fw-bold">Product Name</label><input type="text" name="ProductName" class="form-control" required /></div>
                     <div class="mb-3"><label class="form-label fw-bold">Brand</label><input type="text" name="Brand" class="form-control" required /></div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Category</label>
+                        <select name="Category" id="add_Category" class="form-select" onchange="updateSubcategories('add')" required>
+                            <option value="">-- Select Category --</option>
+                            <option value="Mobiles">Mobiles</option>
+                            <option value="Electronics">Electronics</option>
+                            <option value="Home Appliances">Home Appliances</option>
+                            <option value="Grocery">Grocery</option>
+                            <option value="Plumbing Materials">Plumbing Materials</option>
+                            <option value="Electrical Materials">Electrical Materials</option>
+                            <option value="Hardware & Tools">Hardware & Tools</option>
+                            <option value="Automotive">Automotive</option>
+                            <option value="Furniture">Furniture</option>
+                            <option value="Fashion">Fashion</option>
+                            <option value="Healthcare">Healthcare</option>
+                            <option value="Building Materials">Building Materials</option>
+                            <option value="Kitchen Products">Kitchen Products</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Subcategory</label>
+                        <select name="Subcategory" id="add_Subcategory" class="form-select" required>
+                            <option value="">-- Select Subcategory --</option>
+                        </select>
+                    </div>
                     <div class="mb-3"><label class="form-label fw-bold">Quantity</label><input type="text" name="Quantity" class="form-control" required /></div>
                     <div class="mb-3"><label class="form-label fw-bold">Price</label><input type="number" step="0.01" name="Price" class="form-control" required /></div>
                     <div class="mb-3"><label class="form-label fw-bold">Rating</label><input type="number" step="0.1" name="ProductRating" class="form-control" min="0" max="5" required /></div>
@@ -234,6 +330,31 @@
                 <div class="modal-body p-4 small">
                     <div class="mb-3"><label class="form-label fw-bold">Product Name</label><input type="text" name="ProductName" id="edit_ProductName" class="form-control" required /></div>
                     @if (ViewBag.CanSeeBrand == 1) { <div class="mb-3"><label class="form-label fw-bold">Brand</label><input type="text" name="Brand" id="edit_Brand" class="form-control" required /></div> }
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Category</label>
+                        <select name="Category" id="edit_Category" class="form-select" onchange="updateSubcategories('edit')" required>
+                            <option value="">-- Select Category --</option>
+                            <option value="Mobiles">Mobiles</option>
+                            <option value="Electronics">Electronics</option>
+                            <option value="Home Appliances">Home Appliances</option>
+                            <option value="Grocery">Grocery</option>
+                            <option value="Plumbing Materials">Plumbing Materials</option>
+                            <option value="Electrical Materials">Electrical Materials</option>
+                            <option value="Hardware & Tools">Hardware & Tools</option>
+                            <option value="Automotive">Automotive</option>
+                            <option value="Furniture">Furniture</option>
+                            <option value="Fashion">Fashion</option>
+                            <option value="Healthcare">Healthcare</option>
+                            <option value="Building Materials">Building Materials</option>
+                            <option value="Kitchen Products">Kitchen Products</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Subcategory</label>
+                        <select name="Subcategory" id="edit_Subcategory" class="form-select" required>
+                            <option value="">-- Select Subcategory --</option>
+                        </select>
+                    </div>
                     <div class="mb-3"><label class="form-label fw-bold">Quantity</label><input type="text" name="Quantity" id="edit_Quantity" class="form-control" required /></div>
                     <div class="mb-3"><label class="form-label fw-bold">Price</label><input type="number" step="0.01" name="Price" id="edit_Price" class="form-control" required /></div>
                     <div class="mb-3"><label class="form-label fw-bold">Rating</label><input type="number" step="0.1" name="ProductRating" id="edit_Rating" class="form-control" min="0" max="5" required /></div>
@@ -320,12 +441,56 @@
             document.body.appendChild(f); f.submit();
         }
     }
-    function triggerEditModal(id, name, brand, qty, price, rating, desc) {
+    function triggerEditModal(id, name, brand, qty, price, rating, desc, category, subcategory) {
         document.getElementById('edit_ProductId').value = id; document.getElementById('edit_ProductName').value = name;
         if(document.getElementById('edit_Brand')) { document.getElementById('edit_Brand').value = brand; }
         document.getElementById('edit_Quantity').value = qty;
         document.getElementById('edit_Price').value = price; document.getElementById('edit_Rating').value = rating;
         document.getElementById('edit_Description').value = desc;
+        
+        const catSelect = document.getElementById('edit_Category');
+        if (catSelect) {
+            catSelect.value = category || "";
+            updateSubcategories('edit', subcategory || "");
+        }
+        
         new bootstrap.Modal(document.getElementById('editProductModal')).show();
+    }
+
+    const subcategoriesMap = {
+        "Mobiles": ["Smartphones", "Tablets", "Accessories"],
+        "Electronics": ["Laptops", "TVs", "Monitors", "Cameras", "Speakers"],
+        "Home Appliances": ["Refrigerator", "Washing Machine", "AC", "Water Purifier", "Microwave"],
+        "Grocery": ["Rice", "Oil", "Vegetables", "Packaged Foods", "Beverages"],
+        "Plumbing Materials": ["Pipes", "Valves", "Water Tanks", "Fittings"],
+        "Electrical Materials": ["Wires", "Switches", "MCB", "Lights", "Fans"],
+        "Hardware & Tools": ["Tools", "Fasteners", "Paints"],
+        "Automotive": ["Bike Parts", "Car Parts", "Lubricants"],
+        "Furniture": ["Sofa", "Bed", "Table", "Chair", "Wardrobe"],
+        "Fashion": ["Clothing", "Footwear", "Accessories"],
+        "Healthcare": ["Medical Equipment", "Healthcare Products"],
+        "Building Materials": ["Cement", "Bricks", "Steel", "Tiles"],
+        "Kitchen Products": ["Cookware", "Cutlery", "Chimney", "Blender"]
+    };
+
+    function updateSubcategories(prefix, selectedSub = "") {
+        const catSelect = document.getElementById(prefix + '_Category');
+        const subSelect = document.getElementById(prefix + '_Subcategory');
+        if (!catSelect || !subSelect) return;
+        
+        const category = catSelect.value;
+        subSelect.innerHTML = '<option value="">-- Select Subcategory --</option>';
+        
+        if (category && subcategoriesMap[category]) {
+            subcategoriesMap[category].forEach(sub => {
+                const opt = document.createElement('option');
+                opt.value = sub;
+                opt.textContent = sub;
+                if (sub === selectedSub) {
+                    opt.selected = true;
+                }
+                subSelect.appendChild(opt);
+            });
+        }
     }
 </script>

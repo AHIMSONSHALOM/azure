@@ -8,12 +8,17 @@ using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Net;
+using System.Net.Http;
+using System.Net.Http.Json;
 using System.Net.Mail;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
 using ProductHub_MVC.Data;
 using ProductHub_MVC.Models;
-using OfficeOpenXml; 
+using OfficeOpenXml;
+
+using Microsoft.Extensions.Caching.Memory;
 
 namespace ProductHub_MVC.Controllers
 {
@@ -22,12 +27,14 @@ namespace ProductHub_MVC.Controllers
         private readonly SqlDbContext _context;
         private readonly IConfiguration _configuration;
         private readonly Services.InternetDiscoveryService _discoveryService;
+        private readonly IMemoryCache _memoryCache;
 
-        public ProductController(SqlDbContext context, IConfiguration configuration, Services.InternetDiscoveryService discoveryService)
+        public ProductController(SqlDbContext context, IConfiguration configuration, Services.InternetDiscoveryService discoveryService, IMemoryCache memoryCache)
         {
             _context = context;
             _configuration = configuration;
             _discoveryService = discoveryService;
+            _memoryCache = memoryCache;
         }
 
         // Centralized tracking helper engine to write audit logs smoothly
@@ -45,6 +52,66 @@ namespace ProductHub_MVC.Controllers
                     }
                 }
             } catch { /* Fail-silent to guard thread execution speed */ }
+        }
+
+        private void GetOrCreateBrandAndCategoryIds(string brandName, string categoryName, out int? brandId, out int? categoryId)
+        {
+            brandId = null;
+            categoryId = null;
+
+            if (string.IsNullOrEmpty(brandName)) brandName = "Generic";
+            if (string.IsNullOrEmpty(categoryName)) categoryName = "Electronics";
+
+            try
+            {
+                using (var conn = _context.CreateConnection())
+                {
+                    conn.Open();
+
+                    // 1. Resolve Brand
+                    string checkBrand = "SELECT BrandId FROM T_BRANDS WHERE BrandName = @B";
+                    using (var cmd = new SqlCommand(checkBrand, (SqlConnection)conn))
+                    {
+                        cmd.Parameters.AddWithValue("@B", brandName);
+                        var res = cmd.ExecuteScalar();
+                        if (res != null && res != DBNull.Value)
+                        {
+                            brandId = Convert.ToInt32(res);
+                        }
+                        else
+                        {
+                            string insertBrand = "INSERT INTO T_BRANDS (BrandName) VALUES (@B); SELECT SCOPE_IDENTITY();";
+                            using (var insCmd = new SqlCommand(insertBrand, (SqlConnection)conn))
+                            {
+                                insCmd.Parameters.AddWithValue("@B", brandName);
+                                brandId = Convert.ToInt32(insCmd.ExecuteScalar());
+                            }
+                        }
+                    }
+
+                    // 2. Resolve Category
+                    string checkCat = "SELECT CategoryId FROM T_CATEGORIES WHERE CategoryName = @C";
+                    using (var cmd = new SqlCommand(checkCat, (SqlConnection)conn))
+                    {
+                        cmd.Parameters.AddWithValue("@C", categoryName);
+                        var res = cmd.ExecuteScalar();
+                        if (res != null && res != DBNull.Value)
+                        {
+                            categoryId = Convert.ToInt32(res);
+                        }
+                        else
+                        {
+                            string insertCat = "INSERT INTO T_CATEGORIES (CategoryName) VALUES (@C); SELECT SCOPE_IDENTITY();";
+                            using (var insCmd = new SqlCommand(insertCat, (SqlConnection)conn))
+                            {
+                                insCmd.Parameters.AddWithValue("@C", categoryName);
+                                categoryId = Convert.ToInt32(insCmd.ExecuteScalar());
+                            }
+                        }
+                    }
+                }
+            }
+            catch { }
         }
 
         // Helper method to save HTML email backups locally
@@ -507,16 +574,20 @@ namespace ProductHub_MVC.Controllers
 
         // =========================================================
         // 5. INVENTORY CRUD LOGISTICS HANDLERS
-        // =========================================================
-        
         [HttpGet]
         public IActionResult Details(int id)
         {
             if (HttpContext.Session.GetString("UserSession") == null) return RedirectToAction("Login", "Account");
-            
+            if (!IsSessionValid())
+            {
+                HttpContext.Session.Clear();
+                TempData["ErrorMessage"] = "⚠️ Session Terminated: Your account has been logged in on another machine.";
+                return RedirectToAction("Login", "Account");
+            }
+
             Product product = null;
             using (var connection = _context.CreateConnection()) {
-                string query = "SELECT F_PRODUCT_ID, F_PROD_NAME, F_BRAND, F_QTY, F_PRICE, F_PROD_DESC, F_PROD_RATING, F_CATEGORY, F_LAUNCH_DATE, F_WEBSITE, F_AI_SUMMARY, F_WIKIPEDIA_URL, F_IMAGE_URL, F_ARTICLE_URL FROM T_PRODUCTS WHERE F_PRODUCT_ID = @Id";
+                string query = "SELECT F_PRODUCT_ID, F_PROD_NAME, F_BRAND, F_QTY, F_PRICE, F_PROD_DESC, F_PROD_RATING, F_CATEGORY, F_SUBCATEGORY, F_LAUNCH_DATE, F_WEBSITE, F_AI_SUMMARY, F_WIKIPEDIA_URL, F_IMAGE_URL, F_ARTICLE_URL, F_IS_APPROVED FROM T_PRODUCTS WHERE F_PRODUCT_ID = @Id";
                 using (var cmd = new SqlCommand(query, (SqlConnection)connection)) {
                     cmd.Parameters.AddWithValue("@Id", id);
                     connection.Open();
@@ -531,12 +602,14 @@ namespace ProductHub_MVC.Controllers
                                 ProductDescription = reader["F_PROD_DESC"]?.ToString(),
                                 ProductRating = Convert.ToDouble(reader["F_PROD_RATING"] == DBNull.Value ? 0 : reader["F_PROD_RATING"]),
                                 Category = reader["F_CATEGORY"]?.ToString(),
+                                Subcategory = reader["F_SUBCATEGORY"]?.ToString(),
                                 LaunchDate = reader["F_LAUNCH_DATE"] != DBNull.Value ? Convert.ToDateTime(reader["F_LAUNCH_DATE"]) : (DateTime?)null,
                                 Website = reader["F_WEBSITE"]?.ToString(),
                                 AiSummary = reader["F_AI_SUMMARY"]?.ToString(),
                                 WikipediaUrl = reader["F_WIKIPEDIA_URL"]?.ToString(),
                                 ImageUrl = reader["F_IMAGE_URL"]?.ToString(),
-                                ArticleUrl = reader["F_ARTICLE_URL"]?.ToString()
+                                ArticleUrl = reader["F_ARTICLE_URL"]?.ToString(),
+                                IsApproved = reader["F_IS_APPROVED"] == DBNull.Value ? true : Convert.ToBoolean(reader["F_IS_APPROVED"])
                             };
                         }
                     }
@@ -544,25 +617,271 @@ namespace ProductHub_MVC.Controllers
             }
             
             if (product == null) return NotFound();
+
+            // Load images from database
+            using (var connection = _context.CreateConnection()) {
+                string query = "SELECT ImageId, ProductId, ImageUrl, Source, SourceUrl, IsPrimary, CreatedAt FROM T_PRODUCT_IMAGES WHERE ProductId = @Id";
+                using (var cmd = new SqlCommand(query, (SqlConnection)connection)) {
+                    cmd.Parameters.AddWithValue("@Id", id);
+                    connection.Open();
+                    using (var reader = cmd.ExecuteReader()) {
+                        while (reader.Read()) {
+                            product.ProductImages.Add(new ProductImage {
+                                ImageId = Convert.ToInt32(reader["ImageId"]),
+                                ProductId = Convert.ToInt32(reader["ProductId"]),
+                                ImageUrl = reader["ImageUrl"].ToString() ?? "",
+                                Source = reader["Source"]?.ToString(),
+                                SourceUrl = reader["SourceUrl"]?.ToString(),
+                                IsPrimary = Convert.ToBoolean(reader["IsPrimary"]),
+                                CreatedAt = Convert.ToDateTime(reader["CreatedAt"])
+                            });
+                        }
+                    }
+                }
+            }
+
+            // Load sources from database
+            using (var connection = _context.CreateConnection()) {
+                string query = "SELECT SourceId, ProductId, SourceUrl, SourceName FROM T_PRODUCT_SOURCES WHERE ProductId = @Id";
+                using (var cmd = new SqlCommand(query, (SqlConnection)connection)) {
+                    cmd.Parameters.AddWithValue("@Id", id);
+                    connection.Open();
+                    using (var reader = cmd.ExecuteReader()) {
+                        while (reader.Read()) {
+                            product.ProductSources.Add(new ProductSource {
+                                SourceId = Convert.ToInt32(reader["SourceId"]),
+                                ProductId = Convert.ToInt32(reader["ProductId"]),
+                                SourceUrl = reader["SourceUrl"].ToString() ?? "",
+                                SourceName = reader["SourceName"].ToString() ?? ""
+                            });
+                        }
+                    }
+                }
+            }
+
+            // Load news from database
+            using (var connection = _context.CreateConnection()) {
+                string query = "SELECT NewsId, ProductId, Title, Url, Summary, COALESCE(PublishedDate, PublishDate) AS PublishedDate FROM T_PRODUCT_NEWS WHERE ProductId = @Id";
+                using (var cmd = new SqlCommand(query, (SqlConnection)connection)) {
+                    cmd.Parameters.AddWithValue("@Id", id);
+                    connection.Open();
+                    using (var reader = cmd.ExecuteReader()) {
+                        while (reader.Read()) {
+                            product.ProductNews.Add(new ProductNews {
+                                NewsId = Convert.ToInt32(reader["NewsId"]),
+                                ProductId = Convert.ToInt32(reader["ProductId"]),
+                                Title = reader["Title"].ToString() ?? "",
+                                Url = reader["Url"].ToString() ?? "",
+                                Summary = reader["Summary"]?.ToString(),
+                                PublishedDate = reader["PublishedDate"] != DBNull.Value ? Convert.ToDateTime(reader["PublishedDate"]) : (DateTime?)null
+                            });
+                        }
+                    }
+                }
+            }
+
+            // Increment views in T_ANALYTICS
+            try {
+                using (var connection = _context.CreateConnection()) {
+                    string countQuery = @"
+                        IF EXISTS (SELECT 1 FROM T_ANALYTICS WHERE F_PRODUCT_ID=@Id)
+                            UPDATE T_ANALYTICS SET F_VIEW_COUNT=F_VIEW_COUNT+1, F_LAST_VIEWED=GETDATE() WHERE F_PRODUCT_ID=@Id
+                        ELSE
+                            INSERT INTO T_ANALYTICS (F_PRODUCT_ID, F_VIEW_COUNT, F_LAST_VIEWED) VALUES (@Id, 1, GETDATE())";
+                    using (var cmd = new SqlCommand(countQuery, (SqlConnection)connection)) {
+                        cmd.Parameters.AddWithValue("@Id", id);
+                        connection.Open();
+                        cmd.ExecuteNonQuery();
+                    }
+                }
+            } catch { }
+
+            // On-Demand Enrichment: Trigger if details are incomplete or images list is empty
+            if (string.IsNullOrEmpty(product.ProductDescription) || 
+                product.ProductDescription == "No description available." || 
+                product.ProductDescription == "No specifications provided." || 
+                product.ProductImages.Count == 0)
+            {
+                _ = Task.Run(() => TriggerOnDemandEnrichmentAsync(product));
+            }
             
             LogActivity("VIEW_DETAILS", $"Viewed detailed AI profile for product: '{product.ProductName}'.");
             return View(product);
         }
+
+        private async Task<bool> TriggerOnDemandEnrichmentAsync(Product p)
+        {
+            try
+            {
+                var enrichment = await _discoveryService.FetchEnrichmentAsync(p.ProductName, p.Brand);
+                if (enrichment == null) return false;
+
+                using (var connection = _context.CreateConnection())
+                {
+                    connection.Open();
+                    
+                    string descJson = JsonSerializer.Serialize(new {
+                        description = enrichment.Description,
+                        specifications = enrichment.Specifications,
+                        features = enrichment.Features
+                    });
+                    string updateQuery = "UPDATE T_PRODUCTS SET F_PROD_DESC=@Desc, F_WEBSITE=@Website, F_WIKIPEDIA_URL=@WikiUrl, F_IMAGE_URL=@ImgUrl WHERE F_PRODUCT_ID=@Id";
+                    using (var cmd = new SqlCommand(updateQuery, (SqlConnection)connection))
+                    {
+                        cmd.Parameters.AddWithValue("@Desc", descJson);
+                        cmd.Parameters.AddWithValue("@Website", enrichment.Website);
+                        cmd.Parameters.AddWithValue("@WikiUrl", enrichment.WikipediaUrl);
+                        cmd.Parameters.AddWithValue("@ImgUrl", enrichment.Images.FirstOrDefault() ?? (object)DBNull.Value);
+                        cmd.Parameters.AddWithValue("@Id", p.ProductId);
+                        cmd.ExecuteNonQuery();
+                    }
+
+                    if (enrichment.Images != null && enrichment.Images.Count > 0)
+                    {
+                        string clearQuery = "DELETE FROM T_PRODUCT_IMAGES WHERE ProductId=@Id";
+                        using (var clearCmd = new SqlCommand(clearQuery, (SqlConnection)connection))
+                        {
+                            clearCmd.Parameters.AddWithValue("@Id", p.ProductId);
+                            clearCmd.ExecuteNonQuery();
+                        }
+
+                        string imgQuery = "INSERT INTO T_PRODUCT_IMAGES (ProductId, ImageUrl, Source, IsPrimary) VALUES (@ProductId, @ImageUrl, @Source, @IsPrimary)";
+                        bool first = true;
+                        foreach (var img in enrichment.Images)
+                        {
+                            using (var imgCmd = new SqlCommand(imgQuery, (SqlConnection)connection))
+                            {
+                                imgCmd.Parameters.AddWithValue("@ProductId", p.ProductId);
+                                imgCmd.Parameters.AddWithValue("@ImageUrl", img);
+                                imgCmd.Parameters.AddWithValue("@Source", "AI Scraper");
+                                imgCmd.Parameters.AddWithValue("@IsPrimary", first);
+                                imgCmd.ExecuteNonQuery();
+                            }
+                            first = false;
+                        }
+                    }
+
+                    string checkSrc = "SELECT COUNT(1) FROM T_PRODUCT_SOURCES WHERE ProductId=@Id";
+                    int srcCount = 0;
+                    using (var checkCmd = new SqlCommand(checkSrc, (SqlConnection)connection))
+                    {
+                        checkCmd.Parameters.AddWithValue("@Id", p.ProductId);
+                        srcCount = (int)checkCmd.ExecuteScalar();
+                    }
+
+                    if (srcCount == 0)
+                    {
+                        string srcQuery = "INSERT INTO T_PRODUCT_SOURCES (ProductId, SourceUrl, SourceName) VALUES (@ProductId, @SourceUrl, @SourceName)";
+                        if (!string.IsNullOrEmpty(enrichment.WikipediaUrl))
+                        {
+                            using var cmd = new SqlCommand(srcQuery, (SqlConnection)connection);
+                            cmd.Parameters.AddWithValue("@ProductId", p.ProductId);
+                            cmd.Parameters.AddWithValue("@SourceUrl", enrichment.WikipediaUrl);
+                            cmd.Parameters.AddWithValue("@SourceName", "Wikipedia");
+                            cmd.ExecuteNonQuery();
+                        }
+                        if (!string.IsNullOrEmpty(enrichment.Website))
+                        {
+                            using var cmd = new SqlCommand(srcQuery, (SqlConnection)connection);
+                            cmd.Parameters.AddWithValue("@ProductId", p.ProductId);
+                            cmd.Parameters.AddWithValue("@SourceUrl", enrichment.Website.StartsWith("http") ? enrichment.Website : $"https://{enrichment.Website}");
+                            cmd.Parameters.AddWithValue("@SourceName", "Official Website");
+                            cmd.ExecuteNonQuery();
+                        }
+                        if (!string.IsNullOrEmpty(p.ArticleUrl))
+                        {
+                            using var cmd = new SqlCommand(srcQuery, (SqlConnection)connection);
+                            cmd.Parameters.AddWithValue("@ProductId", p.ProductId);
+                            cmd.Parameters.AddWithValue("@SourceUrl", p.ArticleUrl);
+                            cmd.Parameters.AddWithValue("@SourceName", p.Brand);
+                            cmd.ExecuteNonQuery();
+                        }
+                    }
+                }
+                return true;
+            }
+            catch (Exception ex)
+            {
+                LogActivity("ENRICH_ERROR", $"On-demand enrichment failed for {p.ProductId}: {ex.Message}");
+                return false;
+            }
+        }
+
+        private async Task TriggerBackgroundEnrichmentForProductId(int id, string name, string brand)
+        {
+            try
+            {
+                var enrichment = await _discoveryService.FetchEnrichmentAsync(name, brand);
+                if (enrichment == null) return;
+                
+                using (var conn = _context.CreateConnection())
+                {
+                    conn.Open();
+                    string descJson = JsonSerializer.Serialize(new {
+                        description = enrichment.Description,
+                        specifications = enrichment.Specifications,
+                        features = enrichment.Features
+                    });
+                    string q = "UPDATE T_PRODUCTS SET F_PROD_DESC=@Desc, F_WEBSITE=@Website, F_WIKIPEDIA_URL=@WikiUrl, F_IMAGE_URL=@ImgUrl WHERE F_PRODUCT_ID=@Id";
+                    using (var cmd = new SqlCommand(q, (SqlConnection)conn)) {
+                        cmd.Parameters.AddWithValue("@Desc", descJson);
+                        cmd.Parameters.AddWithValue("@Website", enrichment.Website);
+                        cmd.Parameters.AddWithValue("@WikiUrl", enrichment.WikipediaUrl);
+                        cmd.Parameters.AddWithValue("@ImgUrl", enrichment.Images.FirstOrDefault() ?? (object)DBNull.Value);
+                        cmd.Parameters.AddWithValue("@Id", id);
+                        cmd.ExecuteNonQuery();
+                    }
+
+                    if (enrichment.Images != null && enrichment.Images.Count > 0)
+                    {
+                        string imgQuery = "INSERT INTO T_PRODUCT_IMAGES (ProductId, ImageUrl, Source, IsPrimary) VALUES (@ProductId, @ImageUrl, @Source, @IsPrimary)";
+                        bool first = true;
+                        foreach (var img in enrichment.Images)
+                        {
+                            using (var imgCmd = new SqlCommand(imgQuery, (SqlConnection)conn))
+                            {
+                                imgCmd.Parameters.AddWithValue("@ProductId", id);
+                                imgCmd.Parameters.AddWithValue("@ImageUrl", img);
+                                imgCmd.Parameters.AddWithValue("@Source", "AI Scraper");
+                                imgCmd.Parameters.AddWithValue("@IsPrimary", first);
+                                imgCmd.ExecuteNonQuery();
+                            }
+                            first = false;
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                LogActivity("BG_ENRICH_ERROR", $"Background enrichment failed for Product {id}: {ex.Message}");
+            }
+        }
+
         [HttpPost]
         public IActionResult AddProduct(Product m)
         {
+            int newId = 0;
+            GetOrCreateBrandAndCategoryIds(m.Brand, m.Category, out int? brandId, out int? categoryId);
             using (var c = _context.CreateConnection()) {
-                string q = "INSERT INTO T_PRODUCTS (F_PROD_NAME,F_BRAND,F_QTY,F_PRICE,F_PROD_RATING) VALUES (@N,@B,@Q,@P,@R)";
+                string q = "INSERT INTO T_PRODUCTS (F_PROD_NAME,F_BRAND,F_BRAND_ID,F_QTY,F_PRICE,F_PROD_RATING,F_CATEGORY,F_CATEGORY_ID,F_SUBCATEGORY,F_IS_APPROVED) VALUES (@N,@B,@BrandId,@Q,@P,@R,@Category,@CategoryId,@Subcategory,1); SELECT SCOPE_IDENTITY();";
                 using (var cmd = new SqlCommand(q, (SqlConnection)c)) {
                     cmd.Parameters.AddWithValue("@N", m.ProductName);
                     cmd.Parameters.AddWithValue("@B", m.Brand);
+                    cmd.Parameters.AddWithValue("@BrandId", brandId ?? (object)DBNull.Value);
                     cmd.Parameters.AddWithValue("@Q", m.Quantity);
                     cmd.Parameters.AddWithValue("@P", m.Price);
                     cmd.Parameters.AddWithValue("@R", m.ProductRating);
+                    cmd.Parameters.AddWithValue("@Category", m.Category ?? (object)DBNull.Value);
+                    cmd.Parameters.AddWithValue("@CategoryId", categoryId ?? (object)DBNull.Value);
+                    cmd.Parameters.AddWithValue("@Subcategory", m.Subcategory ?? (object)DBNull.Value);
                     c.Open();
-                    cmd.ExecuteNonQuery();
+                    newId = Convert.ToInt32(cmd.ExecuteScalar());
                 }
             }
+
+            // Phase 1 Requirement: Fetch multiple images and details when product is added
+            Task.Run(() => TriggerBackgroundEnrichmentForProductId(newId, m.ProductName, m.Brand));
+
             LogActivity("ADD_ROW", $"Inserted brand-new inventory data row item: '{m.ProductName}' priced at Rs. {m.Price}.");
             return RedirectToAction(nameof(Index));
         }
@@ -570,15 +889,20 @@ namespace ProductHub_MVC.Controllers
         [HttpPost]
         public IActionResult EditProduct(Product m)
         {
+            GetOrCreateBrandAndCategoryIds(m.Brand, m.Category, out int? brandId, out int? categoryId);
             using (var c = _context.CreateConnection()) {
-                string q = "UPDATE T_PRODUCTS SET F_PROD_NAME=@N,F_BRAND=@B,F_QTY=@Q,F_PRICE=@P,F_PROD_RATING=@R WHERE F_PRODUCT_ID=@I";
+                string q = "UPDATE T_PRODUCTS SET F_PROD_NAME=@N,F_BRAND=@B,F_BRAND_ID=@BrandId,F_QTY=@Q,F_PRICE=@P,F_PROD_RATING=@R,F_CATEGORY=@Category,F_CATEGORY_ID=@CategoryId,F_SUBCATEGORY=@Subcategory WHERE F_PRODUCT_ID=@I";
                 using (var cmd = new SqlCommand(q, (SqlConnection)c)) {
                     cmd.Parameters.AddWithValue("@I", m.ProductId);
                     cmd.Parameters.AddWithValue("@N", m.ProductName);
                     cmd.Parameters.AddWithValue("@B", m.Brand);
+                    cmd.Parameters.AddWithValue("@BrandId", brandId ?? (object)DBNull.Value);
                     cmd.Parameters.AddWithValue("@Q", m.Quantity);
                     cmd.Parameters.AddWithValue("@P", m.Price);
                     cmd.Parameters.AddWithValue("@R", m.ProductRating);
+                    cmd.Parameters.AddWithValue("@Category", m.Category ?? (object)DBNull.Value);
+                    cmd.Parameters.AddWithValue("@CategoryId", categoryId ?? (object)DBNull.Value);
+                    cmd.Parameters.AddWithValue("@Subcategory", m.Subcategory ?? (object)DBNull.Value);
                     c.Open();
                     cmd.ExecuteNonQuery();
                 }
@@ -975,26 +1299,39 @@ namespace ProductHub_MVC.Controllers
             sheet.Cells[1, 6].Value = "Rating";
         }
 
-        private List<Product> FetchFilteredProducts(string brand, double? minP, double? maxP, double? minR, string sort)
+        private List<Product> FetchFilteredProducts(string brand, double? minP, double? maxP, double? minR, string sort, string category = null, string subcategory = null, bool approvedOnly = false)
         {
             List<Product> list = new List<Product>();
             using (var connection = _context.CreateConnection()) {
-                string query = "SELECT F_PRODUCT_ID, F_PROD_NAME, F_BRAND, F_QTY, F_PRICE, F_PROD_DESC, F_PROD_RATING, F_CATEGORY, F_LAUNCH_DATE, F_WEBSITE, F_AI_SUMMARY, F_WIKIPEDIA_URL, F_IMAGE_URL, F_ARTICLE_URL FROM T_PRODUCTS WHERE 1=1";
+                string query = @"
+                    SELECT p.F_PRODUCT_ID, p.F_PROD_NAME, COALESCE(b.BrandName, p.F_BRAND) AS F_BRAND, p.F_QTY, p.F_PRICE, p.F_PROD_DESC, p.F_PROD_RATING, COALESCE(c.CategoryName, p.F_CATEGORY) AS F_CATEGORY, p.F_SUBCATEGORY, p.F_LAUNCH_DATE, p.F_WEBSITE, p.F_AI_SUMMARY, p.F_WIKIPEDIA_URL, p.F_IMAGE_URL, p.F_ARTICLE_URL, p.F_IS_APPROVED, p.F_CATEGORY_ID, p.F_BRAND_ID 
+                    FROM T_PRODUCTS p
+                    LEFT JOIN T_BRANDS b ON p.F_BRAND_ID = b.BrandId
+                    LEFT JOIN T_CATEGORIES c ON p.F_CATEGORY_ID = c.CategoryId
+                    WHERE 1=1";
+
                 if (!string.IsNullOrEmpty(brand) && brand != "ALL") {
                     if (brand.Contains(",")) {
                         var brandList = brand.Split(',').Select(b => b.Trim()).ToList();
                         var clauses = new List<string>();
                         for (int i = 0; i < brandList.Count; i++) {
-                            clauses.Add($"F_BRAND LIKE @B{i}");
+                            clauses.Add($"(b.BrandName LIKE @B{i} OR p.F_BRAND LIKE @B{i})");
                         }
                         query += " AND (" + string.Join(" OR ", clauses) + ")";
                     } else {
-                        query += " AND F_BRAND LIKE @B";
+                        query += " AND (b.BrandName LIKE @B OR p.F_BRAND LIKE @B)";
                     }
                 }
-                if (minP.HasValue) query += " AND F_PRICE >= @MinP";
-                if (maxP.HasValue) query += " AND F_PRICE <= @MaxP";
-                if (minR.HasValue) query += " AND F_PROD_RATING >= @MinR";
+                if (minP.HasValue) query += " AND p.F_PRICE >= @MinP";
+                if (maxP.HasValue) query += " AND p.F_PRICE <= @MaxP";
+                if (minR.HasValue) query += " AND p.F_PROD_RATING >= @MinR";
+                if (!string.IsNullOrEmpty(category)) query += " AND (c.CategoryName = @Category OR p.F_CATEGORY = @Category)";
+                if (!string.IsNullOrEmpty(subcategory)) query += " AND p.F_SUBCATEGORY = @Subcategory";
+                if (approvedOnly) query += " AND p.F_IS_APPROVED = 1";
+
+                if (sort == "Trending") query += " ORDER BY p.F_PROD_RATING DESC";
+                else if (sort == "Latest") query += " ORDER BY p.F_LAUNCH_DATE DESC";
+
                 using (var cmd = new SqlCommand(query, (SqlConnection)connection)) {
                     if (!string.IsNullOrEmpty(brand) && brand != "ALL") {
                         if (brand.Contains(",")) {
@@ -1009,10 +1346,9 @@ namespace ProductHub_MVC.Controllers
                     cmd.Parameters.AddWithValue("@MinP", minP ?? (object)DBNull.Value);
                     cmd.Parameters.AddWithValue("@MaxP", maxP ?? (object)DBNull.Value);
                     cmd.Parameters.AddWithValue("@MinR", minR ?? (object)DBNull.Value);
-                    if (sort == "Trending") query += " ORDER BY F_PROD_RATING DESC";
-                    else if (sort == "Latest") query += " ORDER BY F_LAUNCH_DATE DESC";
+                    if (!string.IsNullOrEmpty(category)) cmd.Parameters.AddWithValue("@Category", category);
+                    if (!string.IsNullOrEmpty(subcategory)) cmd.Parameters.AddWithValue("@Subcategory", subcategory);
 
-                    cmd.CommandText = query; // Apply the updated query with ORDER BY
                     connection.Open();
                     using (var reader = cmd.ExecuteReader()) {
                         while (reader.Read())
@@ -1025,17 +1361,503 @@ namespace ProductHub_MVC.Controllers
                                 ProductDescription = reader["F_PROD_DESC"]?.ToString(),
                                 ProductRating = Convert.ToDouble(reader["F_PROD_RATING"] == DBNull.Value ? 0 : reader["F_PROD_RATING"]),
                                 Category = reader["F_CATEGORY"]?.ToString(),
+                                Subcategory = reader["F_SUBCATEGORY"]?.ToString(),
+                                LaunchDate = reader["F_LAUNCH_DATE"] != DBNull.Value ? Convert.ToDateTime(reader["F_LAUNCH_DATE"]) : (DateTime?)null,
+                                Website = reader["F_WEBSITE"]?.ToString(),
+                                AiSummary = reader["F_AI_SUMMARY"]?.ToString(),
+                                WikipediaUrl = reader["F_WIKIPEDIA_URL"]?.ToString(),
+                                ImageUrl = reader["F_IMAGE_URL"]?.ToString(),
+                                ArticleUrl = reader["F_ARTICLE_URL"]?.ToString(),
+                                IsApproved = reader["F_IS_APPROVED"] == DBNull.Value ? true : Convert.ToBoolean(reader["F_IS_APPROVED"]),
+                                CategoryId = reader["F_CATEGORY_ID"] != DBNull.Value ? Convert.ToInt32(reader["F_CATEGORY_ID"]) : (int?)null,
+                                BrandId = reader["F_BRAND_ID"] != DBNull.Value ? Convert.ToInt32(reader["F_BRAND_ID"]) : (int?)null
+                            });
+                    }
+                }
+            }
+            return list;
+        }
+
+        [HttpPost]
+        public async Task<IActionResult> RefreshProductInfo(int id)
+        {
+            var p = GetProductById(id);
+            if (p != null) {
+                await TriggerOnDemandEnrichmentAsync(p);
+                TempData["SuccessMessage"] = "🔄 Product specs and description enriched successfully from live internet sources!";
+            }
+            return RedirectToAction("Details", new { id });
+        }
+
+        [HttpPost]
+        public async Task<IActionResult> RefreshInternetImages(int id)
+        {
+            var p = GetProductById(id);
+            if (p != null) {
+                var enrichment = await _discoveryService.FetchEnrichmentAsync(p.ProductName, p.Brand);
+                if (enrichment != null && enrichment.Images.Count > 0) {
+                    using (var conn = _context.CreateConnection()) {
+                        conn.Open();
+                        string clearQ = "DELETE FROM T_PRODUCT_IMAGES WHERE ProductId=@Id";
+                        using (var cmd = new SqlCommand(clearQ, (SqlConnection)conn)) {
+                            cmd.Parameters.AddWithValue("@Id", id);
+                            cmd.ExecuteNonQuery();
+                        }
+                        string imgQuery = "INSERT INTO T_PRODUCT_IMAGES (ProductId, ImageUrl, Source, IsPrimary) VALUES (@ProductId, @ImageUrl, @Source, @IsPrimary)";
+                        bool first = true;
+                        foreach (var img in enrichment.Images) {
+                            using (var imgCmd = new SqlCommand(imgQuery, (SqlConnection)conn)) {
+                                imgCmd.Parameters.AddWithValue("@ProductId", id);
+                                imgCmd.Parameters.AddWithValue("@ImageUrl", img);
+                                imgCmd.Parameters.AddWithValue("@Source", "AI Scraper");
+                                imgCmd.Parameters.AddWithValue("@IsPrimary", first);
+                                imgCmd.ExecuteNonQuery();
+                            }
+                            first = false;
+                        }
+                    }
+                    TempData["SuccessMessage"] = "🖼️ Product image gallery refreshed successfully from online image sources!";
+                }
+            }
+            return RedirectToAction("Details", new { id });
+        }
+
+        [HttpPost]
+        public IActionResult ApproveDiscoveredProduct(int id)
+        {
+            using (var conn = _context.CreateConnection()) {
+                string q = "UPDATE T_PRODUCTS SET F_IS_APPROVED=1 WHERE F_PRODUCT_ID=@Id";
+                using (var cmd = new SqlCommand(q, (SqlConnection)conn)) {
+                    cmd.Parameters.AddWithValue("@Id", id);
+                    conn.Open();
+                    cmd.ExecuteNonQuery();
+                }
+            }
+            LogActivity("APPROVE_PRODUCT", $"Approved discovered product item ID: {id}");
+            TempData["SuccessMessage"] = "✅ Discovered product approved and published to the active store catalog!";
+            return RedirectToAction("Details", new { id });
+        }
+
+        [HttpPost]
+        public IActionResult ReclassifyProduct(int id, string category, string subcategory)
+        {
+            using (var conn = _context.CreateConnection()) {
+                string q = "UPDATE T_PRODUCTS SET F_CATEGORY=@Category, F_SUBCATEGORY=@Subcategory WHERE F_PRODUCT_ID=@Id";
+                using (var cmd = new SqlCommand(q, (SqlConnection)conn)) {
+                    cmd.Parameters.AddWithValue("@Category", category);
+                    cmd.Parameters.AddWithValue("@Subcategory", subcategory);
+                    cmd.Parameters.AddWithValue("@Id", id);
+                    conn.Open();
+                    cmd.ExecuteNonQuery();
+                }
+            }
+            LogActivity("RECLASSIFY", $"Reclassified product item ID {id} to: {category} -> {subcategory}");
+            TempData["SuccessMessage"] = $"🏷️ Product reclassified to {category} > {subcategory}!";
+            return RedirectToAction("Details", new { id });
+        }
+
+        [HttpPost]
+        public IActionResult SetPrimaryImage(int productId, int imageId)
+        {
+            string imageUrl = "";
+            using (var conn = _context.CreateConnection()) {
+                conn.Open();
+                string getQ = "SELECT ImageUrl FROM T_PRODUCT_IMAGES WHERE ImageId=@ImageId";
+                using (var cmd = new SqlCommand(getQ, (SqlConnection)conn)) {
+                    cmd.Parameters.AddWithValue("@ImageId", imageId);
+                    imageUrl = cmd.ExecuteScalar()?.ToString() ?? "";
+                }
+                if (!string.IsNullOrEmpty(imageUrl)) {
+                    string updateQ = "UPDATE T_PRODUCTS SET F_IMAGE_URL=@Url WHERE F_PRODUCT_ID=@ProductId";
+                    using (var cmd = new SqlCommand(updateQ, (SqlConnection)conn)) {
+                        cmd.Parameters.AddWithValue("@Url", imageUrl);
+                        cmd.Parameters.AddWithValue("@ProductId", productId);
+                        cmd.ExecuteNonQuery();
+                    }
+                    string resetQ = "UPDATE T_PRODUCT_IMAGES SET IsPrimary=0 WHERE ProductId=@ProductId; UPDATE T_PRODUCT_IMAGES SET IsPrimary=1 WHERE ImageId=@ImageId;";
+                    using (var cmd = new SqlCommand(resetQ, (SqlConnection)conn)) {
+                        cmd.Parameters.AddWithValue("@ProductId", productId);
+                        cmd.Parameters.AddWithValue("@ImageId", imageId);
+                        cmd.ExecuteNonQuery();
+                    }
+                }
+            }
+            TempData["SuccessMessage"] = "⭐ Primary display image updated successfully!";
+            return RedirectToAction("Details", new { id = productId });
+        }
+
+        [HttpGet]
+        public async Task<IActionResult> Search(string q)
+        {
+            if (HttpContext.Session.GetString("UserSession") == null) return RedirectToAction("Login", "Account");
+            if (string.IsNullOrEmpty(q)) return RedirectToAction("Index");
+
+            string cacheKey = $"search_{q.Trim().ToLower()}";
+            if (_memoryCache.TryGetValue(cacheKey, out AiSearchResponse cachedResponse))
+            {
+                ViewBag.Query = q;
+                return View(cachedResponse);
+            }
+
+            var response = new AiSearchResponse { Answer = "" };
+
+            // Log Search query
+            try {
+                using (var conn = _context.CreateConnection()) {
+                    string analyticsQ = "INSERT INTO T_PRODUCT_ANALYTICS (ProductId, SearchQuery, UserSession) VALUES (NULL, @Q, @User)";
+                    using (var cmd = new SqlCommand(analyticsQ, (SqlConnection)conn)) {
+                        cmd.Parameters.AddWithValue("@Q", q);
+                        cmd.Parameters.AddWithValue("@User", HttpContext.Session.GetString("UserSession") ?? "Anonymous");
+                        conn.Open();
+                        cmd.ExecuteNonQuery();
+                    }
+                }
+            } catch { }
+
+            // 1. Search database first
+            var dbProducts = new List<Product>();
+            try
+            {
+                using (var conn = _context.CreateConnection())
+                {
+                    string selectQ = @"
+                        SELECT TOP 10 p.F_PRODUCT_ID, p.F_PROD_NAME, COALESCE(b.BrandName, p.F_BRAND) AS F_BRAND, p.F_QTY, p.F_PRICE, p.F_PROD_DESC, p.F_PROD_RATING, COALESCE(c.CategoryName, p.F_CATEGORY) AS F_CATEGORY, p.F_IMAGE_URL 
+                        FROM T_PRODUCTS p
+                        LEFT JOIN T_BRANDS b ON p.F_BRAND_ID = b.BrandId
+                        LEFT JOIN T_CATEGORIES c ON p.F_CATEGORY_ID = c.CategoryId
+                        WHERE p.F_PROD_NAME LIKE @Q OR p.F_BRAND LIKE @Q OR b.BrandName LIKE @Q";
+                    using (var cmd = new SqlCommand(selectQ, (SqlConnection)conn))
+                    {
+                        cmd.Parameters.AddWithValue("@Q", "%" + q + "%");
+                        conn.Open();
+                        using (var reader = cmd.ExecuteReader())
+                        {
+                            while (reader.Read())
+                            {
+                                dbProducts.Add(new Product
+                                {
+                                    ProductId = Convert.ToInt32(reader["F_PRODUCT_ID"]),
+                                    ProductName = reader["F_PROD_NAME"].ToString() ?? "",
+                                    Brand = reader["F_BRAND"].ToString() ?? "",
+                                    Price = Convert.ToDouble(reader["F_PRICE"] == DBNull.Value ? 0 : reader["F_PRICE"]),
+                                    ProductDescription = reader["F_PROD_DESC"]?.ToString(),
+                                    ImageUrl = reader["F_IMAGE_URL"]?.ToString(),
+                                    Category = reader["F_CATEGORY"]?.ToString()
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+            catch { }
+
+            if (dbProducts.Count > 0)
+            {
+                // Found in Database: Call Python generate-summary (No web scraping)
+                var localCards = new List<ProductCardDto>();
+                var localImages = new List<string>();
+                foreach (var p in dbProducts)
+                {
+                    localCards.Add(new ProductCardDto
+                    {
+                        Id = p.ProductId.ToString(),
+                        Name = p.ProductName,
+                        Brand = p.Brand,
+                        Category = p.Category ?? "Electronics",
+                        Description = p.ProductDescription ?? "Local inventory item."
+                    });
+                    if (!string.IsNullOrEmpty(p.ImageUrl))
+                    {
+                        localImages.Add(p.ImageUrl);
+                    }
+                }
+
+                string summary = "";
+                try
+                {
+                    using (var client = new HttpClient())
+                    {
+                        var payload = new
+                        {
+                            query = q,
+                            products = dbProducts.Select(p => new {
+                                name = p.ProductName,
+                                brand = p.Brand,
+                                price = p.Price,
+                                description = p.ProductDescription ?? ""
+                            }).ToList()
+                        };
+                        var apiRes = await client.PostAsJsonAsync("http://localhost:8000/generate-summary", payload);
+                        if (apiRes.IsSuccessStatusCode)
+                        {
+                            var resData = await apiRes.Content.ReadFromJsonAsync<JsonElement>();
+                            if (resData.TryGetProperty("answer", out var ansVal))
+                            {
+                                summary = ansVal.GetString() ?? "";
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    summary = $"### AI Summary Generation Offline\n\nGenerated from local database: {dbProducts.Count} products matched. LLM server offline: {ex.Message}";
+                }
+
+                if (string.IsNullOrEmpty(summary))
+                {
+                    summary = $"### Product intelligence report for **{q}**\n\nFound {dbProducts.Count} matching item(s) in local catalog:\n\n" +
+                              string.Join("\n", dbProducts.Select(p => $"* **{p.ProductName}** ({p.Brand}) - Rs. {p.Price:N0}"));
+                }
+
+                response.Answer = summary;
+                response.ProductCards = localCards;
+                response.Images = localImages.Take(6).ToList();
+                response.Sources = new List<SourceDto> { new SourceDto { Id = 1, Name = "Local Database", Url = "/Product" } };
+                response.RelatedProducts = new List<string> { $"Detailed review of {dbProducts[0].ProductName}", $"Compare {q} with alternatives" };
+
+                _memoryCache.Set(cacheKey, response, TimeSpan.FromMinutes(10));
+            }
+            else
+            {
+                // Not found in Database: Call Python AI-Search ( DuckDuckGo scraping fallback)
+                try {
+                    using (var client = new HttpClient()) {
+                        var apiResponse = await client.PostAsJsonAsync("http://localhost:8000/ai-search", new { query = q });
+                        if (apiResponse.IsSuccessStatusCode) {
+                            response = await apiResponse.Content.ReadFromJsonAsync<AiSearchResponse>() ?? response;
+
+                            // Cache newly discovered products to SQL database
+                            foreach (var card in response.ProductCards)
+                            {
+                                if (!ProductExistsByName(card.Name))
+                                {
+                                    int newPid = InsertScrapedProduct(card, response.Images);
+                                    card.Id = newPid.ToString();
+                                }
+                            }
+
+                            _memoryCache.Set(cacheKey, response, TimeSpan.FromMinutes(10));
+                        }
+                    }
+                } catch (Exception ex) {
+                    response.Answer = $"### Error querying AI Search\n\nCould not reach the local AI service. Details: {ex.Message}. Make sure Python FastAPI is running on port 8000.";
+                }
+            }
+
+            ViewBag.Query = q;
+            return View(response);
+        }
+
+        private bool ProductExistsByName(string name)
+        {
+            try {
+                using (var conn = _context.CreateConnection())
+                {
+                    string query = "SELECT COUNT(1) FROM T_PRODUCTS WHERE F_PROD_NAME = @Name";
+                    using (var cmd = new SqlCommand(query, (SqlConnection)conn))
+                    {
+                        cmd.Parameters.AddWithValue("@Name", name);
+                        conn.Open();
+                        return (int)cmd.ExecuteScalar() > 0;
+                    }
+                }
+            } catch { return false; }
+        }
+
+        private int InsertScrapedProduct(ProductCardDto card, List<string> images)
+        {
+            int newId = 0;
+            try {
+                GetOrCreateBrandAndCategoryIds(card.Brand, card.Category, out int? brandId, out int? categoryId);
+                
+                using (var conn = _context.CreateConnection())
+                {
+                    conn.Open();
+
+                    // 1. Insert product
+                    string query = @"
+                        INSERT INTO T_PRODUCTS 
+                        (F_PROD_NAME, F_BRAND, F_BRAND_ID, F_QTY, F_PRICE, F_PROD_DESC, F_PROD_RATING, F_CATEGORY, F_CATEGORY_ID, F_WEBSITE, F_IS_APPROVED)
+                        VALUES 
+                        (@Name, @Brand, @BrandId, 'Discovered', 0.0, @Desc, 4.0, @Category, @CategoryId, @Url, 1);
+                        SELECT SCOPE_IDENTITY();";
+
+                    using (var cmd = new SqlCommand(query, (SqlConnection)conn))
+                    {
+                        cmd.Parameters.AddWithValue("@Name", card.Name);
+                        cmd.Parameters.AddWithValue("@Brand", card.Brand ?? "Web");
+                        cmd.Parameters.AddWithValue("@BrandId", brandId ?? (object)DBNull.Value);
+                        cmd.Parameters.AddWithValue("@Desc", card.Description ?? "");
+                        cmd.Parameters.AddWithValue("@Category", card.Category ?? "Electronics");
+                        cmd.Parameters.AddWithValue("@CategoryId", categoryId ?? (object)DBNull.Value);
+                        cmd.Parameters.AddWithValue("@Url", card.Url ?? "");
+
+                        newId = Convert.ToInt32(cmd.ExecuteScalar());
+                    }
+
+                    // 2. Insert image as primary image if available
+                    if (images != null && images.Count > 0)
+                    {
+                        string imgQ = "INSERT INTO T_PRODUCT_IMAGES (ProductId, ImageUrl, Source, IsPrimary) VALUES (@ProductId, @ImageUrl, 'AI Scraper', 1)";
+                        using (var cmd = new SqlCommand(imgQ, (SqlConnection)conn))
+                        {
+                            cmd.Parameters.AddWithValue("@ProductId", newId);
+                            cmd.Parameters.AddWithValue("@ImageUrl", images[0]);
+                            cmd.ExecuteNonQuery();
+                        }
+
+                        // Update F_IMAGE_URL on T_PRODUCTS
+                        string updQ = "UPDATE T_PRODUCTS SET F_IMAGE_URL = @Url WHERE F_PRODUCT_ID = @Id";
+                        using (var cmd = new SqlCommand(updQ, (SqlConnection)conn))
+                        {
+                            cmd.Parameters.AddWithValue("@Url", images[0]);
+                            cmd.Parameters.AddWithValue("@Id", newId);
+                            cmd.ExecuteNonQuery();
+                        }
+                    }
+
+                    // 3. Save source URL
+                    if (!string.IsNullOrEmpty(card.Url))
+                    {
+                        string srcQ = "INSERT INTO T_PRODUCT_SOURCES (ProductId, SourceUrl, SourceName) VALUES (@ProductId, @Url, 'Discovered Link')";
+                        using (var cmd = new SqlCommand(srcQ, (SqlConnection)conn))
+                        {
+                            cmd.Parameters.AddWithValue("@ProductId", newId);
+                            cmd.Parameters.AddWithValue("@Url", card.Url);
+                            cmd.ExecuteNonQuery();
+                        }
+                    }
+                }
+            } catch { }
+            return newId;
+        }
+
+        [HttpGet]
+        public async Task<IActionResult> Category(string cat, string sub)
+        {
+            if (HttpContext.Session.GetString("UserSession") == null) return RedirectToAction("Login", "Account");
+            
+            ViewBag.LoggedUser = HttpContext.Session.GetString("UserSession");
+            ViewBag.IsAdmin = HttpContext.Session.GetInt32("IsAdmin") ?? 0;
+            
+            List<Product> products = FetchFilteredProducts(
+                brand: null, minP: null, maxP: null, minR: null, sort: "Latest",
+                category: cat, subcategory: sub
+            );
+
+            string aiInsights = "<div class='text-center p-4'><i class='fa-solid fa-circle-notch fa-spin fa-2x text-indigo-400 mb-3'></i><br/>Loading AI market insights dynamically...</div>";
+
+            ViewBag.CategoryName = cat;
+            ViewBag.SubcategoryName = sub;
+            ViewBag.AiInsights = aiInsights;
+
+            return View(products);
+        }
+
+        [HttpGet]
+        public IActionResult Dashboard()
+        {
+            if (HttpContext.Session.GetString("UserSession") == null) return RedirectToAction("Login", "Account");
+
+            var trending = new List<Product>();
+            var latest = new List<Product>();
+            var mostViewed = new List<Product>();
+            var newThisWeek = new List<Product>();
+            var topCategories = new List<CategoryStat>();
+            var searchQueries = new List<SearchQueryStat>();
+
+            using (var conn = _context.CreateConnection()) {
+                conn.Open();
+
+                string trendQ = "SELECT TOP 5 F_PRODUCT_ID, F_PROD_NAME, F_BRAND, F_PRICE, F_PROD_RATING, F_IMAGE_URL FROM T_PRODUCTS ORDER BY F_PROD_RATING DESC";
+                using (var cmd = new SqlCommand(trendQ, (SqlConnection)conn)) {
+                    using var r = cmd.ExecuteReader();
+                    while (r.Read()) trending.Add(new Product { ProductId = Convert.ToInt32(r["F_PRODUCT_ID"]), ProductName = r["F_PROD_NAME"].ToString() ?? "", Brand = r["F_BRAND"].ToString() ?? "", Price = Convert.ToDouble(r["F_PRICE"]), ProductRating = Convert.ToDouble(r["F_PROD_RATING"]), ImageUrl = r["F_IMAGE_URL"]?.ToString() });
+                }
+
+                string lateQ = "SELECT TOP 5 F_PRODUCT_ID, F_PROD_NAME, F_BRAND, F_PRICE, F_PROD_RATING, F_IMAGE_URL FROM T_PRODUCTS WHERE F_LAUNCH_DATE IS NOT NULL ORDER BY F_LAUNCH_DATE DESC";
+                using (var cmd = new SqlCommand(lateQ, (SqlConnection)conn)) {
+                    using var r = cmd.ExecuteReader();
+                    while (r.Read()) latest.Add(new Product { ProductId = Convert.ToInt32(r["F_PRODUCT_ID"]), ProductName = r["F_PROD_NAME"].ToString() ?? "", Brand = r["F_BRAND"].ToString() ?? "", Price = Convert.ToDouble(r["F_PRICE"]), ProductRating = Convert.ToDouble(r["F_PROD_RATING"]), ImageUrl = r["F_IMAGE_URL"]?.ToString() });
+                }
+
+                string viewQ = "SELECT TOP 5 p.F_PRODUCT_ID, p.F_PROD_NAME, p.F_BRAND, p.F_PRICE, a.F_VIEW_COUNT FROM T_PRODUCTS p JOIN T_ANALYTICS a ON p.F_PRODUCT_ID = a.F_PRODUCT_ID ORDER BY a.F_VIEW_COUNT DESC";
+                using (var cmd = new SqlCommand(viewQ, (SqlConnection)conn)) {
+                    using var r = cmd.ExecuteReader();
+                    while (r.Read()) mostViewed.Add(new Product { ProductId = Convert.ToInt32(r["F_PRODUCT_ID"]), ProductName = r["F_PROD_NAME"].ToString() ?? "", Brand = r["F_BRAND"].ToString() ?? "", Price = Convert.ToDouble(r["F_PRICE"]), Quantity = r["F_VIEW_COUNT"].ToString() }); 
+                }
+
+                string weekQ = "SELECT F_PRODUCT_ID, F_PROD_NAME, F_BRAND, F_PRICE, F_PROD_RATING FROM T_PRODUCTS WHERE F_LAUNCH_DATE >= DATEADD(day, -7, GETDATE())";
+                using (var cmd = new SqlCommand(weekQ, (SqlConnection)conn)) {
+                    using var r = cmd.ExecuteReader();
+                    while (r.Read()) newThisWeek.Add(new Product { ProductId = Convert.ToInt32(r["F_PRODUCT_ID"]), ProductName = r["F_PROD_NAME"].ToString() ?? "", Brand = r["F_BRAND"].ToString() ?? "", Price = Convert.ToDouble(r["F_PRICE"]), ProductRating = Convert.ToDouble(r["F_PROD_RATING"]) });
+                }
+
+                string catQ = "SELECT F_CATEGORY, COUNT(1) AS Cnt FROM T_PRODUCTS WHERE F_CATEGORY IS NOT NULL GROUP BY F_CATEGORY ORDER BY Cnt DESC";
+                using (var cmd = new SqlCommand(catQ, (SqlConnection)conn)) {
+                    using var r = cmd.ExecuteReader();
+                    while (r.Read()) topCategories.Add(new CategoryStat { Category = r["F_CATEGORY"].ToString() ?? "", Count = Convert.ToInt32(r["Cnt"]) });
+                }
+
+                string searchQ = "SELECT TOP 10 SearchQuery, COUNT(1) AS Cnt FROM T_PRODUCT_ANALYTICS WHERE SearchQuery IS NOT NULL GROUP BY SearchQuery ORDER BY Cnt DESC";
+                using (var cmd = new SqlCommand(searchQ, (SqlConnection)conn)) {
+                    using var r = cmd.ExecuteReader();
+                    while (r.Read()) searchQueries.Add(new SearchQueryStat { Query = r["SearchQuery"].ToString() ?? "", Count = Convert.ToInt32(r["Cnt"]) });
+                }
+            }
+
+            ViewBag.Trending = trending;
+            ViewBag.Latest = latest;
+            ViewBag.MostViewed = mostViewed;
+            ViewBag.NewThisWeek = newThisWeek;
+            ViewBag.TopCategories = topCategories;
+            ViewBag.SearchQueries = searchQueries;
+
+            return View();
+        }
+
+        private Product GetProductById(int id)
+        {
+            Product product = null;
+            using (var connection = _context.CreateConnection()) {
+                string query = "SELECT F_PRODUCT_ID, F_PROD_NAME, F_BRAND, F_QTY, F_PRICE, F_PROD_DESC, F_PROD_RATING, F_CATEGORY, F_SUBCATEGORY, F_LAUNCH_DATE, F_WEBSITE, F_AI_SUMMARY, F_WIKIPEDIA_URL, F_IMAGE_URL, F_ARTICLE_URL FROM T_PRODUCTS WHERE F_PRODUCT_ID = @Id";
+                using (var cmd = new SqlCommand(query, (SqlConnection)connection)) {
+                    cmd.Parameters.AddWithValue("@Id", id);
+                    connection.Open();
+                    using (var reader = cmd.ExecuteReader()) {
+                        if (reader.Read()) {
+                            product = new Product {
+                                ProductId = Convert.ToInt32(reader["F_PRODUCT_ID"]),
+                                ProductName = reader["F_PROD_NAME"].ToString() ?? "",
+                                Brand = reader["F_BRAND"].ToString() ?? "",
+                                Quantity = reader["F_QTY"].ToString() ?? "",
+                                Price = Convert.ToDouble(reader["F_PRICE"] == DBNull.Value ? 0 : reader["F_PRICE"]),
+                                ProductDescription = reader["F_PROD_DESC"]?.ToString(),
+                                ProductRating = Convert.ToDouble(reader["F_PROD_RATING"] == DBNull.Value ? 0 : reader["F_PROD_RATING"]),
+                                Category = reader["F_CATEGORY"]?.ToString(),
+                                Subcategory = reader["F_SUBCATEGORY"]?.ToString(),
                                 LaunchDate = reader["F_LAUNCH_DATE"] != DBNull.Value ? Convert.ToDateTime(reader["F_LAUNCH_DATE"]) : (DateTime?)null,
                                 Website = reader["F_WEBSITE"]?.ToString(),
                                 AiSummary = reader["F_AI_SUMMARY"]?.ToString(),
                                 WikipediaUrl = reader["F_WIKIPEDIA_URL"]?.ToString(),
                                 ImageUrl = reader["F_IMAGE_URL"]?.ToString(),
                                 ArticleUrl = reader["F_ARTICLE_URL"]?.ToString()
-                            });
+                            };
+                        }
                     }
                 }
             }
-            return list;
+            return product;
+        }
+
+        public class CategoryStat {
+            public string Category { get; set; } = "";
+            public int Count { get; set; }
+        }
+
+        public class SearchQueryStat {
+            public string Query { get; set; } = "";
+            public int Count { get; set; }
         }
     }
 }

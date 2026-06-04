@@ -35,6 +35,12 @@ namespace ProductHub_MVC.Models
         [Column("F_CATEGORY")]
         public string? Category { get; set; }
 
+        [Column("F_CATEGORY_ID")]
+        public int? CategoryId { get; set; }
+
+        [Column("F_BRAND_ID")]
+        public int? BrandId { get; set; }
+
         [Column("F_LAUNCH_DATE")]
         public DateTime? LaunchDate { get; set; }
 
@@ -52,5 +58,20 @@ namespace ProductHub_MVC.Models
 
         [Column("F_ARTICLE_URL")]
         public string? ArticleUrl { get; set; }
+
+        [Column("F_SUBCATEGORY")]
+        public string? Subcategory { get; set; }
+
+        [NotMapped]
+        public List<ProductImage> ProductImages { get; set; } = new();
+
+        [NotMapped]
+        public List<ProductSource> ProductSources { get; set; } = new();
+
+        [NotMapped]
+        public List<ProductNews> ProductNews { get; set; } = new();
+
+        [Column("F_IS_APPROVED")]
+        public bool IsApproved { get; set; } = true;
     }
 }

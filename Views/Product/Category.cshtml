@@ -1,0 +1,176 @@
+@model IEnumerable<ProductHub_MVC.Models.Product>
+@{
+    ViewData["Title"] = $"{ViewBag.CategoryName} Intelligence Dashboard";
+    
+    // Subcategories list matching CategoryHelper definitions
+    var subcategories = new List<string>();
+    if (ProductHub_MVC.Models.CategoryHelper.Categories.TryGetValue(ViewBag.CategoryName ?? "", out List<string> list)) {
+        subcategories = list;
+    }
+}
+
+<div class="max-w-6xl mx-auto px-4 py-8">
+    
+    <!-- Header banner -->
+    <div class="bg-gradient-to-r from-slate-900 to-indigo-950 text-white rounded-3xl p-6 p-lg-8 shadow-xl mb-6 border border-indigo-500/20">
+        <nav aria-label="Breadcrumb" class="mb-3">
+            <ol class="breadcrumb m-0 text-indigo-300">
+                <li class="breadcrumb-item"><a asp-action="Index" class="text-indigo-400 text-decoration-none hover:underline">Catalog</a></li>
+                <li class="breadcrumb-item active text-white" aria-current="page">@ViewBag.CategoryName</li>
+            </ol>
+        </nav>
+        <h1 class="text-3xl font-extrabold m-0 flex align-items-center gap-2">
+            @if (ViewBag.CategoryName == "Mobiles") { <span>📱</span> }
+            else if (ViewBag.CategoryName == "Electronics") { <span>💻</span> }
+            else if (ViewBag.CategoryName == "Home Appliances") { <span>🏠</span> }
+            else if (ViewBag.CategoryName == "Grocery") { <span>🛒</span> }
+            else if (ViewBag.CategoryName == "Plumbing Materials") { <span>🚿</span> }
+            else if (ViewBag.CategoryName == "Electrical Materials") { <span>⚡</span> }
+            else if (ViewBag.CategoryName == "Hardware & Tools") { <span>🔨</span> }
+            else if (ViewBag.CategoryName == "Furniture") { <span>🪑</span> }
+            else if (ViewBag.CategoryName == "Fashion") { <span>👕</span> }
+            else if (ViewBag.CategoryName == "Healthcare") { <span>🏥</span> }
+            else if (ViewBag.CategoryName == "Building Materials") { <span>🧱</span> }
+            else if (ViewBag.CategoryName == "Kitchen Products") { <span>🍳</span> }
+            
+            @ViewBag.CategoryName Intelligence
+            @if (!string.IsNullOrEmpty(ViewBag.SubcategoryName))
+            {
+                <span class="text-indigo-300 text-xl fw-normal">› @ViewBag.SubcategoryName</span>
+            }
+        </h1>
+        <p class="text-indigo-200/80 mt-2 m-0 small">Browse in-store inventory and live discovered market offerings.</p>
+    </div>
+
+    <div class="row g-4">
+        
+        <!-- Left Sidebar: Subcategory Filter & List -->
+        <div class="col-lg-3 col-md-4">
+            <div class="bg-white rounded-3xl p-5 shadow-sm border border-gray-100">
+                <h4 class="text-md font-bold text-gray-900 mb-3 flex items-center">
+                    <i class="fa-solid fa-folder text-indigo-600 mr-2"></i> Subcategories
+                </h4>
+                <div class="list-group list-group-flush border-0">
+                    <a href="/Product/Category?cat=@ViewBag.CategoryName" class="list-group-item list-group-item-action bg-transparent border-0 px-2 py-2.5 rounded-lg text-sm font-semibold @(string.IsNullOrEmpty(ViewBag.SubcategoryName) ? "bg-indigo-50 text-indigo-700" : "text-gray-600 hover:bg-gray-50")">
+                        Show All
+                    </a>
+                    @foreach (var sub in subcategories)
+                    {
+                        <a href="/Product/Category?cat=@ViewBag.CategoryName&sub=@sub" class="list-group-item list-group-item-action bg-transparent border-0 px-2 py-2.5 rounded-lg text-sm font-semibold @(ViewBag.SubcategoryName == sub ? "bg-indigo-50 text-indigo-700" : "text-gray-600 hover:bg-gray-50")">
+                            @sub
+                        </a>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Main Panel: AI Recommendations & Products -->
+        <div class="col-lg-9 col-md-8 space-y-6">
+            
+            <!-- AI Insights Card -->
+            <div class="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-3xl p-6 border border-indigo-100 shadow-inner">
+                <h3 class="text-md font-bold text-indigo-900 mb-3 flex items-center">
+                    <i class="fa-solid fa-sparkles text-purple-500 mr-2"></i> AI Market Recommendations & Insights
+                </h3>
+                <div class="text-indigo-850 leading-relaxed text-sm" id="ai-insights-content">
+                    @Html.Raw((ViewBag.AiInsights as string ?? "")
+                        .Replace("### ", "<h5>")
+                        .Replace("**", "<strong>")
+                        .Replace("\n\n", "<br/><br/>")
+                        .Replace("\n", "<br/>")
+                    )
+                </div>
+            </div>
+
+            <!-- Products Listing Grid -->
+            <div>
+                <h3 class="text-lg font-bold text-gray-900 mb-4 flex items-center">
+                    <i class="fa-solid fa-box text-indigo-600 mr-2"></i> Category Catalog Feed (@Model.Count() products)
+                </h3>
+                
+                @if (Model.Count() == 0)
+                {
+                    <div class="bg-white rounded-3xl p-8 border border-gray-100 text-center text-muted">
+                        <i class="fa-solid fa-inbox text-4xl mb-3 text-gray-300"></i>
+                        <p class="m-0 font-medium">No products registered under this category hierarchy yet.</p>
+                    </div>
+                }
+                else
+                {
+                    <div class="row g-4">
+                        @foreach (var prod in Model)
+                        {
+                            <div class="col-md-6 col-lg-4">
+                                <div class="bg-white rounded-2xl shadow-sm border border-gray-100 hover:shadow-lg hover:-translate-y-1 transition-all duration-300 overflow-hidden d-flex flex-column h-100 relative">
+                                    
+                                    <div class="absolute top-3 right-3 bg-white/90 backdrop-blur-md px-2 py-0.5 rounded-full text-xs font-bold shadow-sm border border-gray-50">
+                                        <span class="text-yellow-500">★</span> @prod.ProductRating.ToString("0.0")
+                                    </div>
+
+                                    <!-- Product Image placeholder/scraped -->
+                                    <div class="h-40 w-full overflow-hidden bg-gray-50 flex items-center justify-center p-3 border-b border-gray-100">
+                                        <img src="@(string.IsNullOrEmpty(prod.ImageUrl) ? "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=300" : prod.ImageUrl)" class="img-fluid h-100 object-fit-contain" style="max-height: 120px;" />
+                                    </div>
+
+                                    <div class="p-4 flex-grow d-flex flex-column justify-content-between">
+                                        <div>
+                                            <span class="text-xs text-indigo-600 font-bold tracking-wide text-uppercase block mb-1">@prod.Subcategory</span>
+                                            <h4 class="text-md font-bold text-gray-900 mb-1 leading-snug">@prod.ProductName</h4>
+                                            <p class="text-xs text-gray-400 font-medium mb-3">by @prod.Brand</p>
+                                        </div>
+
+                                        <div class="d-flex justify-content-between align-items-center pt-3 border-top border-gray-50 mt-auto">
+                                            <span class="text-md font-extrabold text-green-600">Rs.@prod.Price.ToString("N0")</span>
+                                            <a href="/Product/Details/@prod.ProductId" class="btn btn-sm btn-outline-primary px-3 rounded-pill" style="border-color: #6366f1; color: #6366f1;">
+                                                Details
+                                            </a>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        document.addEventListener("DOMContentLoaded", function() {
+            var cat = "@Html.Raw(ViewBag.CategoryName)";
+            var sub = "@Html.Raw(ViewBag.SubcategoryName)";
+            var promptStr = "Generate professional market insights and product recommendations for Category: '" + cat + "' and Subcategory: '" + (sub || "General") + "'. Return a concise markdown summary.";
+            
+            fetch("http://localhost:8000/chat", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    product_name: cat,
+                    product_description: sub || "General Catalog",
+                    user_message: promptStr
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.reply) {
+                    var html = data.reply
+                        .replace(/### (.*?)\n/g, '<h5>$1</h5>')
+                        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                        .replace(/\n\n/g, '<br/><br/>')
+                        .replace(/\n/g, '<br/>');
+                    document.getElementById('ai-insights-content').innerHTML = html;
+                } else {
+                    document.getElementById('ai-insights-content').innerHTML = "AI Insights are currently unavailable.";
+                }
+            })
+            .catch(error => {
+                document.getElementById('ai-insights-content').innerHTML = "Local AI service is offline. Start the python FastAPI backend to see dynamic category market analysis reports here.";
+            });
+        });
+    </script>
+}

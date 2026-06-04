@@ -5,3 +5,8 @@ Sent_Mails_Backup/
 .vs/
 *.user
 *.suo
+
+# Python
+python_services/venv/
+python_services/__pycache__/
+python_services/chroma_db/

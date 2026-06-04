@@ -1,92 +1,218 @@
 @model ProductHub_MVC.Models.Product
 @{
-    ViewData["Title"] = "Product Details";
+    ViewData["Title"] = "Product Intelligence Details";
+    var isAdmin = ViewBag.IsAdmin ?? 0;
+
+    // Parse specifications and features from JSON description if formatted as JSON
+    string descriptionText = Model.ProductDescription ?? "No description available.";
+    var specifications = new Dictionary<string, string>();
+    var features = new List<string>();
+
+    try {
+        if (!string.IsNullOrEmpty(Model.ProductDescription) && Model.ProductDescription.Trim().StartsWith("{")) {
+            using var jsonDoc = System.Text.Json.JsonDocument.Parse(Model.ProductDescription);
+            var root = jsonDoc.RootElement;
+            if (root.TryGetProperty("description", out var descProp)) {
+                descriptionText = descProp.GetString() ?? "";
+            }
+            if (root.TryGetProperty("specifications", out var specsProp)) {
+                foreach (var prop in specsProp.EnumerateObject()) {
+                    specifications[prop.Name] = prop.Value.GetString() ?? "";
+                }
+            }
+            if (root.TryGetProperty("features", out var featsProp)) {
+                foreach (var item in featsProp.EnumerateArray()) {
+                    features.Add(item.GetString() ?? "");
+                }
+            }
+        }
+    } catch { }
+
+    // Fallback if empty
+    if (specifications.Count == 0) {
+        specifications["Brand"] = Model.Brand;
+        specifications["Inventory Status"] = Model.Quantity;
+        specifications["Rating Score"] = Model.ProductRating.ToString("0.0");
+        if (Model.LaunchDate.HasValue) {
+            specifications["Launch Date"] = Model.LaunchDate.Value.ToString("yyyy-MM-dd");
+        }
+    }
+    if (features.Count == 0) {
+        features.Add("High consumer rating and positive reviews");
+        features.Add("Official manufacturer support and detailed documentation");
+    }
 }
 
 <div class="max-w-6xl mx-auto px-4 py-8">
-    <!-- Breadcrumb -->
-    <nav class="flex mb-8" aria-label="Breadcrumb">
-        <ol class="inline-flex items-center space-x-1 md:space-x-3">
-            <li class="inline-flex items-center">
-                <a asp-action="Index" class="inline-flex items-center text-sm font-medium text-gray-500 hover:text-blue-600">
-                    <i class="fa-solid fa-house mr-2"></i> Dashboard
-                </a>
-            </li>
-            <li>
-                <div class="flex items-center">
-                    <i class="fa-solid fa-chevron-right text-gray-400 text-xs mx-1"></i>
-                    <span class="text-sm font-medium text-gray-900 ml-1">Product Details</span>
-                </div>
-            </li>
-        </ol>
-    </nav>
+    <!-- Breadcrumb & Admin Action Banners -->
+    <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-3">
+        <nav aria-label="Breadcrumb">
+            <ol class="breadcrumb m-0">
+                <li class="breadcrumb-item"><a asp-action="Index" class="text-indigo-600 font-semibold no-underline"><i class="fa-solid fa-house mr-1"></i> Catalog</a></li>
+                <li class="breadcrumb-item active" aria-current="page">Product Intelligence</li>
+            </ol>
+        </nav>
 
+        @if (isAdmin == 1)
+        {
+            <div class="d-flex gap-2">
+                @if (Model.IsApproved == false)
+                {
+                    <form asp-action="ApproveDiscoveredProduct" method="post" style="display:inline;">
+                        <input type="hidden" name="id" value="@Model.ProductId" />
+                        <button type="submit" class="btn btn-success font-semibold px-3 py-2 shadow-sm border-0">
+                            <i class="fa-solid fa-check mr-1"></i> Approve Product
+                        </button>
+                    </form>
+                }
+                
+                <form asp-action="RefreshProductInfo" method="post" style="display:inline;">
+                    <input type="hidden" name="id" value="@Model.ProductId" />
+                    <button type="submit" class="btn btn-primary font-semibold px-3 py-2 shadow-sm border-0" style="background: linear-gradient(135deg, #3b82f6, #8b5cf6);">
+                        <i class="fa-solid fa-arrows-rotate mr-1"></i> Refresh Specs
+                    </button>
+                </form>
+
+                <form asp-action="RefreshInternetImages" method="post" style="display:inline;">
+                    <input type="hidden" name="id" value="@Model.ProductId" />
+                    <button type="submit" class="btn btn-secondary font-semibold px-3 py-2 shadow-sm border-0">
+                        <i class="fa-solid fa-image mr-1"></i> Refresh Images
+                    </button>
+                </form>
+            </div>
+        }
+    </div>
+
+    @if (isAdmin == 1 && Model.IsApproved == false)
+    {
+        <div class="alert alert-warning border-0 bg-warning bg-opacity-10 text-warning-emphasis p-4 mb-4 rounded d-flex align-items-center justify-content-between">
+            <div class="d-flex align-items-center">
+                <i class="fa-solid fa-circle-exclamation fs-4 mr-3"></i>
+                <div>
+                    <h6 class="m-0 fw-bold">Live Discovered Item Pending Approval</h6>
+                    <span class="small">This product was parsed from background internet feeds and has not been added to the store catalog catalog yet.</span>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- Main Grid -->
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
         
-        <!-- Left Column: Product Info -->
+        <!-- Left 2 Columns: Product Gallery, Info, Specs, News -->
         <div class="lg:col-span-2 space-y-8">
             
-            <!-- Hero Card -->
+            <!-- Gallery & Info Hero Card -->
             <div class="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
-                @if (!string.IsNullOrEmpty(Model.ImageUrl))
-                {
-                    <div class="h-64 w-full overflow-hidden relative">
-                        <img src="@Model.ImageUrl" alt="@Model.ProductName" class="w-full h-full object-cover" />
-                        <div class="absolute top-4 right-4 bg-white/80 backdrop-blur-md px-4 py-2 rounded-full text-gray-900 font-bold text-sm shadow-sm">
-                            <i class="fa-solid fa-star text-yellow-500 mr-1"></i> @Model.ProductRating.ToString("0.0")
+                
+                <!-- Premium Image Gallery -->
+                <div class="p-4 bg-gray-50 border-b border-gray-100">
+                    <div class="flex flex-col gap-4">
+                        <div class="h-80 w-full overflow-hidden relative rounded-2xl bg-white border border-gray-200 flex items-center justify-center shadow-inner">
+                            <img id="mainGalleryImage" src="@(string.IsNullOrEmpty(Model.ImageUrl) ? "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=800" : Model.ImageUrl)" alt="@Model.ProductName" class="h-full object-contain p-2" style="max-height: 320px;" />
+                            <div class="absolute top-4 right-4 bg-white/90 backdrop-blur-md px-3 py-1.5 rounded-full text-gray-900 font-bold text-xs shadow-sm border border-gray-100">
+                                <i class="fa-solid fa-star text-yellow-500 mr-1"></i> @Model.ProductRating.ToString("0.0")
+                            </div>
                         </div>
+
+                        <!-- Gallery Thumbnails Strip -->
+                        @if (Model.ProductImages != null && Model.ProductImages.Count > 0)
+                        {
+                            <div class="flex gap-3 overflow-x-auto py-2 px-1 scrollbar-hide">
+                                @foreach (var img in Model.ProductImages)
+                                {
+                                    <div class="position-relative border rounded-xl overflow-hidden cursor-pointer shadow-sm bg-white hover:scale-105 transition-all @(img.IsPrimary ? "border-indigo-600 border-2" : "border-gray-200")" style="width: 70px; height: 70px; flex-shrink: 0;" onclick="switchGalleryImage('@img.ImageUrl', this)">
+                                        <img src="@img.ImageUrl" class="w-100 h-100 object-cover" style="width: 70px; height: 70px; object-fit: cover;" />
+                                        @if (isAdmin == 1)
+                                        {
+                                            <form asp-action="SetPrimaryImage" method="post" class="position-absolute bottom-0 end-0 m-1">
+                                                <input type="hidden" name="productId" value="@Model.ProductId" />
+                                                <input type="hidden" name="imageId" value="@img.ImageId" />
+                                                <button type="submit" class="btn btn-sm btn-light p-0 rounded-circle border shadow d-flex align-items-center justify-content-center" style="width: 22px; height: 22px;" title="Set display photo">
+                                                    <i class="fa-solid fa-star @(img.IsPrimary ? "text-yellow-500" : "text-gray-400")" style="font-size: 10px;"></i>
+                                                </button>
+                                            </form>
+                                        }
+                                    </div>
+                                }
+                            </div>
+                        }
                     </div>
-                }
-                else
-                {
-                    <div class="h-48 bg-gradient-to-r from-blue-600 to-indigo-600 flex items-center justify-center relative">
-                        <div class="absolute top-4 right-4 bg-white/20 backdrop-blur-md px-4 py-2 rounded-full text-white font-bold text-sm">
-                            <i class="fa-solid fa-star text-yellow-300 mr-1"></i> @Model.ProductRating.ToString("0.0")
-                        </div>
-                        <i class="fa-solid fa-rocket text-white/50 text-6xl"></i>
-                    </div>
-                }
+                </div>
+
+                <!-- Product Text Details Block -->
                 <div class="p-8">
-                    <div class="flex justify-between items-start mb-4">
+                    <div class="flex justify-between items-start mb-6">
                         <div>
                             <span class="text-xs font-bold uppercase tracking-wider text-indigo-600 bg-indigo-50 px-3 py-1 rounded-full mb-3 inline-block">
-                                @(string.IsNullOrEmpty(Model.Category) ? "Uncategorized" : Model.Category)
+                                @(string.IsNullOrEmpty(Model.Category) ? "Uncategorized" : Model.Category) > @(string.IsNullOrEmpty(Model.Subcategory) ? "General" : Model.Subcategory)
                             </span>
                             <h1 class="text-3xl font-extrabold text-gray-900">@Model.ProductName</h1>
                             <p class="text-gray-500 mt-1 font-medium">by <span class="text-blue-600">@Model.Brand</span></p>
                         </div>
                         <div class="text-right">
-                            <p class="text-3xl font-extrabold text-green-600">Rs.@Model.Price.ToString("N0")</p>
-                            <p class="text-sm text-gray-400 mt-1">@Model.Quantity in stock</p>
+                            <p class="text-3xl font-extrabold text-green-600">Rs. @Model.Price.ToString("N2")</p>
+                            <p class="text-sm text-gray-400 mt-1">Status: @Model.Quantity</p>
                         </div>
                     </div>
                     
-                    <p class="text-gray-600 leading-relaxed text-lg mb-6">
-                        @(string.IsNullOrEmpty(Model.ProductDescription) ? "No description provided." : Model.ProductDescription)
+                    <h4 class="text-lg font-bold text-gray-900 mb-3">Product Overview</h4>
+                    <p class="text-gray-600 leading-relaxed text-md mb-6">
+                        @descriptionText
                     </p>
 
-                    <div class="flex flex-wrap gap-4">
-                        @if (!string.IsNullOrEmpty(Model.ArticleUrl))
-                        {
-                            <a href="@Model.ArticleUrl" target="_blank" class="inline-flex items-center px-5 py-2.5 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 transition shadow-md shadow-blue-500/20 no-underline">
-                                <i class="fa-solid fa-newspaper mr-2"></i> Read Source Article
-                            </a>
-                        }
-                        else if (!string.IsNullOrEmpty(Model.Website))
-                        {
-                            var websiteUrl = Model.Website.StartsWith("http") ? Model.Website : $"https://{Model.Website}";
-                            <a href="@websiteUrl" target="_blank" class="inline-flex items-center px-5 py-2.5 bg-gray-900 text-white font-medium rounded-xl hover:bg-gray-800 transition no-underline">
-                                <i class="fa-solid fa-globe mr-2"></i> Visit Website
-                            </a>
-                        }
-                        @if (!string.IsNullOrEmpty(Model.WikipediaUrl))
-                        {
-                            <a href="@Model.WikipediaUrl" target="_blank" class="inline-flex items-center px-5 py-2.5 bg-white border border-gray-200 text-gray-700 font-medium rounded-xl hover:bg-gray-50 transition no-underline">
-                                <i class="fa-brands fa-wikipedia-w mr-2 text-purple-600"></i> Read on Wikipedia
-                            </a>
-                        }
-                    </div>
+                    <!-- Citation Sources badges -->
+                    @if (Model.ProductSources != null && Model.ProductSources.Count > 0)
+                    {
+                        <div class="mt-6">
+                            <h5 class="text-sm font-bold text-gray-900 mb-3">Verified Information Sources:</h5>
+                            <div class="flex flex-wrap gap-2">
+                                @foreach (var src in Model.ProductSources)
+                                {
+                                    <a href="@src.SourceUrl" target="_blank" class="inline-flex items-center px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-lg text-xs transition border border-gray-200 text-decoration-none">
+                                        <i class="fa-solid fa-globe mr-1.5 text-blue-500"></i> @src.SourceName
+                                    </a>
+                                }
+                            </div>
+                        </div>
+                    }
                 </div>
+            </div>
+
+            <!-- Specifications Table Card -->
+            <div class="bg-white rounded-3xl p-8 shadow-sm border border-gray-100">
+                <h3 class="text-xl font-bold text-gray-900 mb-4 flex items-center">
+                    <i class="fa-solid fa-list-check text-indigo-600 mr-2"></i> Technical Specifications
+                </h3>
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle m-0 text-sm">
+                        <tbody>
+                            @foreach (var spec in specifications)
+                            {
+                                <tr>
+                                    <td class="fw-bold text-secondary text-capitalize" style="width: 35%;">@spec.Key</td>
+                                    <td class="text-dark">@spec.Value</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Features List Card -->
+            <div class="bg-white rounded-3xl p-8 shadow-sm border border-gray-100">
+                <h3 class="text-xl font-bold text-gray-900 mb-4 flex items-center">
+                    <i class="fa-solid fa-circle-check text-success mr-2"></i> Key Product Features
+                </h3>
+                <ul class="list-group list-group-flush border-0">
+                    @foreach (var feat in features)
+                    {
+                        <li class="list-group-item bg-transparent border-0 px-0 py-2 d-flex align-items-start gap-2">
+                            <i class="fa-solid fa-circle-check text-success mt-1" style="font-size: 14px;"></i>
+                            <span class="text-gray-700 font-medium">@feat</span>
+                        </li>
+                    }
+                </ul>
             </div>
 
             <!-- AI Summary Card -->
@@ -95,56 +221,60 @@
                     <i class="fa-solid fa-microchip text-9xl"></i>
                 </div>
                 <h3 class="text-xl font-bold text-indigo-900 mb-4 flex items-center relative z-10">
-                    <i class="fa-solid fa-sparkles text-purple-500 mr-2"></i> AI Generated Summary
+                    <i class="fa-solid fa-sparkles text-purple-500 mr-2"></i> AI-Generated Sentiment Summary
                 </h3>
-                <p class="text-indigo-800/80 leading-relaxed relative z-10">
-                    @(string.IsNullOrEmpty(Model.AiSummary) ? "Our AI is currently analyzing this product. The summary will appear here shortly once processed by our local LLM." : Model.AiSummary)
+                <p class="text-indigo-800 leading-relaxed relative z-10">
+                    @(string.IsNullOrEmpty(Model.AiSummary) ? "Our LLM is currently synthesizing catalog details. Sentiment reports will populate here." : Model.AiSummary)
                 </p>
             </div>
+            
         </div>
 
         <!-- Right Column: AI Chatbot / Sidebar -->
         <div class="space-y-8">
             
-            <!-- Quick Stats -->
+            <!-- Quick At-A-Glance Info Card -->
             <div class="bg-white rounded-3xl p-6 shadow-sm border border-gray-100">
-                <h3 class="text-lg font-bold text-gray-900 mb-4">At a glance</h3>
+                <h3 class="text-lg font-bold text-gray-900 mb-4">Market Metadata</h3>
                 <ul class="space-y-4">
                     <li class="flex items-center justify-between">
                         <span class="text-gray-500"><i class="fa-regular fa-calendar mr-2"></i> Launched</span>
-                        <span class="font-semibold text-gray-900">@(Model.LaunchDate?.ToString("MMM dd, yyyy") ?? "Unknown")</span>
+                        <span class="font-semibold text-gray-900">@(Model.LaunchDate?.ToString("MMM dd, yyyy") ?? "Sync Pending")</span>
                     </li>
                     <li class="flex items-center justify-between">
-                        <span class="text-gray-500"><i class="fa-solid fa-box mr-2"></i> Inventory</span>
-                        <span class="font-semibold text-gray-900">@Model.Quantity units</span>
+                        <span class="text-gray-500"><i class="fa-solid fa-box mr-2"></i> Catalog Type</span>
+                        <span class="font-semibold text-gray-900">@Model.Quantity</span>
                     </li>
-                    <li class="flex items-center justify-between">
-                        <span class="text-gray-500"><i class="fa-solid fa-chart-line mr-2"></i> Engagement</span>
-                        <span class="font-semibold text-gray-900 text-green-600">High</span>
-                    </li>
+                    @if (isAdmin == 1)
+                    {
+                        <li class="flex items-center justify-between">
+                            <span class="text-gray-500"><i class="fa-solid fa-shield-halved mr-2"></i> Status</span>
+                            <span class="badge bg-@(Model.IsApproved ? "success" : "warning")">@(Model.IsApproved ? "Approved" : "Pending Approval")</span>
+                        </li>
+                    }
                 </ul>
             </div>
 
-            <!-- AI Chatbot UI -->
-            <div class="bg-gray-900 rounded-3xl p-6 shadow-xl flex flex-col h-[400px]">
+            <!-- AI Chatbot UI (RAG enabled) -->
+            <div class="bg-gray-900 rounded-3xl p-6 shadow-xl flex flex-col h-[480px]">
                 <div class="flex items-center mb-4 pb-4 border-b border-gray-800">
                     <div class="w-10 h-10 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center text-white font-bold mr-3">
                         AI
                     </div>
                     <div>
-                        <h3 class="text-white font-bold leading-tight">Product Assistant</h3>
-                        <p class="text-gray-400 text-xs">Powered by local Ollama</p>
+                        <h3 class="text-white font-bold leading-tight">Product Intelligence Bot</h3>
+                        <p class="text-gray-400 text-xs">Powered by local Ollama & RAG</p>
                     </div>
                 </div>
                 
                 <div id="chat-window" class="flex-grow overflow-y-auto mb-4 custom-scrollbar">
                     <div class="bg-gray-800 rounded-2xl rounded-tl-none p-3 max-w-[85%] mb-4">
-                        <p class="text-sm text-gray-200">Hi! I can answer any questions about <strong>@Model.ProductName</strong>. What would you like to know?</p>
+                        <p class="text-sm text-gray-200">Hi! Ask me specifications, alternatives, or reviews summary for <strong>@Model.ProductName</strong>.</p>
                     </div>
                 </div>
 
                 <div class="relative mt-auto flex">
-                    <input type="text" id="chat-input" placeholder="Type your question..." class="w-full bg-gray-800 border-none rounded-xl py-3 pl-4 pr-12 text-sm text-gray-300 focus:ring-2 focus:ring-purple-500 placeholder-gray-500 outline-none" onkeypress="handleKeyPress(event)">
+                    <input type="text" id="chat-input" placeholder="Ask about specifications or comparisons..." class="w-full bg-gray-800 border-none rounded-xl py-3 pl-4 pr-12 text-sm text-gray-300 focus:ring-2 focus:ring-purple-500 placeholder-gray-500 outline-none" onkeypress="handleKeyPress(event)">
                     <button id="chat-send" onclick="sendMessage()" class="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 bg-purple-600 hover:bg-purple-700 transition rounded-lg flex items-center justify-center text-white cursor-pointer shadow-lg shadow-purple-500/30">
                         <i class="fa-solid fa-paper-plane text-xs"></i>
                     </button>
@@ -156,61 +286,75 @@
 </div>
 
 <script>
+    function switchGalleryImage(url, elem) {
+        document.getElementById('mainGalleryImage').src = url;
+        
+        // Update border highlights
+        const thumbnails = elem.parentNode.children;
+        for (let t of thumbnails) {
+            t.classList.remove('border-indigo-600', 'border-2');
+            t.classList.add('border-gray-200');
+        }
+        elem.classList.remove('border-gray-200');
+        elem.classList.add('border-indigo-600', 'border-2');
+    }
+
     async function sendMessage() {
         const input = document.getElementById('chat-input');
         const message = input.value.trim();
         if (!message) return;
 
-        // Clear input
         input.value = '';
         input.disabled = true;
 
         const chatWindow = document.getElementById('chat-window');
         
-        // Add User Message
+        // User text
         const userDiv = document.createElement('div');
         userDiv.className = "bg-blue-600 text-white rounded-2xl rounded-tr-none p-3 max-w-[85%] mb-4 ml-auto";
         userDiv.innerHTML = `<p class="text-sm">${message}</p>`;
         chatWindow.appendChild(userDiv);
         chatWindow.scrollTop = chatWindow.scrollHeight;
 
-        // Add Loading indicator
+        // Loading
         const loadingDiv = document.createElement('div');
         loadingDiv.className = "bg-gray-800 rounded-2xl rounded-tl-none p-3 max-w-[85%] mb-4 opacity-50";
-        loadingDiv.innerHTML = `<p class="text-sm text-gray-400"><i class="fa-solid fa-circle-notch fa-spin"></i> Thinking...</p>`;
+        loadingDiv.innerHTML = `<p class="text-sm text-gray-400"><i class="fa-solid fa-circle-notch fa-spin"></i> Reasoning from sources...</p>`;
         chatWindow.appendChild(loadingDiv);
         chatWindow.scrollTop = chatWindow.scrollHeight;
 
         try {
-            // Call Python FastAPI
             const response = await fetch('http://localhost:8000/chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     product_name: "@Html.Raw(Model.ProductName)",
-                    product_description: "@Html.Raw(Model.ProductDescription?.Replace("\"", "\\\""))",
+                    product_description: "@Html.Raw(descriptionText.Replace("\"", "\\\"").Replace("\n", " ").Replace("\r", " "))",
                     user_message: message
                 })
             });
 
             if (!response.ok) throw new Error('API Error');
-            
             const data = await response.json();
-            
-            // Remove Loading
             chatWindow.removeChild(loadingDiv);
             
-            // Add AI Message
+            // Add AI message with simple Markdown rendering or formatting
             const aiDiv = document.createElement('div');
             aiDiv.className = "bg-gray-800 border border-purple-500/30 rounded-2xl rounded-tl-none p-3 max-w-[85%] mb-4";
-            aiDiv.innerHTML = `<p class="text-sm text-gray-200">${data.reply}</p>`;
-            chatWindow.appendChild(aiDiv);
+            
+            // Basic format formatting for bold and list text
+            let replyText = data.reply
+                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                .replace(/\*(.*?)\*/g, '<em>$1</em>')
+                .replace(/\n/g, '<br/>');
 
+            aiDiv.innerHTML = `<p class="text-sm text-gray-200">${replyText}</p>`;
+            chatWindow.appendChild(aiDiv);
         } catch (error) {
             chatWindow.removeChild(loadingDiv);
             const errorDiv = document.createElement('div');
             errorDiv.className = "bg-red-900/50 border border-red-500/50 rounded-2xl rounded-tl-none p-3 max-w-[85%] mb-4";
-            errorDiv.innerHTML = `<p class="text-sm text-red-200">The local AI service requires 'Ollama' to be installed on your machine to generate replies.</p>`;
+            errorDiv.innerHTML = `<p class="text-sm text-red-200">The local RAG Chatbot is currently offline. Start the python API on port 8000.</p>`;
             chatWindow.appendChild(errorDiv);
         }
 
@@ -229,6 +373,7 @@
 <style>
     .custom-scrollbar::-webkit-scrollbar {
         width: 4px;
+        height: 6px;
     }
     .custom-scrollbar::-webkit-scrollbar-track {
         background: #1f2937;
@@ -236,5 +381,8 @@
     .custom-scrollbar::-webkit-scrollbar-thumb {
         background: #4b5563;
         border-radius: 4px;
+    }
+    .scrollbar-hide::-webkit-scrollbar {
+        display: none;
     }
 </style>

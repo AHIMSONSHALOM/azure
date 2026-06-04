@@ -1,0 +1,220 @@
+@using ProductHub_MVC.Controllers
+@{
+    ViewData["Title"] = "Market Intelligence Dashboard";
+    var trending = ViewBag.Trending as List<ProductHub_MVC.Models.Product> ?? new();
+    var latest = ViewBag.Latest as List<ProductHub_MVC.Models.Product> ?? new();
+    var mostViewed = ViewBag.MostViewed as List<ProductHub_MVC.Models.Product> ?? new();
+    var newThisWeek = ViewBag.NewThisWeek as List<ProductHub_MVC.Models.Product> ?? new();
+    var topCategories = ViewBag.TopCategories as List<ProductController.CategoryStat> ?? new();
+    var searchQueries = ViewBag.SearchQueries as List<ProductController.SearchQueryStat> ?? new();
+}
+
+<div class="max-w-6xl mx-auto px-4 py-8">
+    
+    <!-- Title Section -->
+    <div class="mb-6 border-b border-gray-200 pb-5">
+        <span class="text-xs font-bold uppercase tracking-wider text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-full mb-3 inline-block">
+            <i class="fa-solid fa-chart-line mr-1 text-purple-500"></i> Platform Analytics
+        </span>
+        <h1 class="text-3xl font-extrabold text-gray-900">Market Intelligence Dashboard</h1>
+        <p class="text-gray-500 mt-2">Aggregated system engagement stats, category performance, and trending product metrics.</p>
+    </div>
+
+    <!-- Stats row -->
+    <div class="row g-3 mb-6">
+        <div class="col-6 col-md-3">
+            <div class="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 text-center">
+                <i class="fa-solid fa-fire text-orange-500 fs-4 mb-2"></i>
+                <p class="text-xs text-muted font-semibold text-uppercase m-0">Weekly Launches</p>
+                <h3 class="text-2xl font-extrabold text-gray-900 mt-1">@newThisWeek.Count</h3>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 text-center">
+                <i class="fa-solid fa-eye text-blue-500 fs-4 mb-2"></i>
+                <p class="text-xs text-muted font-semibold text-uppercase m-0">Top Active Item</p>
+                <h4 class="text-sm font-bold text-gray-900 mt-1 text-truncate" title="@(mostViewed.FirstOrDefault()?.ProductName ?? "N/A")">
+                    @(mostViewed.FirstOrDefault()?.ProductName ?? "N/A")
+                </h4>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 text-center">
+                <i class="fa-solid fa-magnifying-glass text-indigo-500 fs-4 mb-2"></i>
+                <p class="text-xs text-muted font-semibold text-uppercase m-0">Top Search query</p>
+                <h3 class="text-sm font-bold text-gray-900 mt-1 text-truncate" title="@(searchQueries.FirstOrDefault()?.Query ?? "N/A")">
+                    “@(searchQueries.FirstOrDefault()?.Query ?? "N/A")”
+                </h3>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 text-center">
+                <i class="fa-solid fa-tags text-green-500 fs-4 mb-2"></i>
+                <p class="text-xs text-muted font-semibold text-uppercase m-0">Top Category</p>
+                <h3 class="text-sm font-bold text-gray-900 mt-1 text-truncate" title="@(topCategories.FirstOrDefault()?.Category ?? "N/A")">
+                    @(topCategories.FirstOrDefault()?.Category ?? "N/A")
+                </h3>
+            </div>
+        </div>
+    </div>
+
+    <!-- Grid Layout of Dashboard Widgets -->
+    <div class="row g-4">
+        
+        <!-- Trending Products & Recent Launches -->
+        <div class="col-lg-8 space-y-6">
+            
+            <!-- Trending Products Widget -->
+            <div class="bg-white rounded-3xl p-6 shadow-sm border border-gray-100">
+                <h3 class="text-lg font-bold text-gray-900 mb-4 flex items-center">
+                    <i class="fa-solid fa-fire text-danger mr-2"></i> Top Rated Trending Products
+                </h3>
+                
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle m-0 text-sm">
+                        <thead>
+                            <tr>
+                                <th>Product</th>
+                                <th>Brand</th>
+                                <th>Rating</th>
+                                <th>Price</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var prod in trending)
+                            {
+                                <tr>
+                                    <td>
+                                        <div class="d-flex align-items-center gap-2">
+                                            @if (!string.IsNullOrEmpty(prod.ImageUrl))
+                                            {
+                                                <img src="@prod.ImageUrl" class="rounded" style="width: 32px; height: 32px; object-fit: contain;" />
+                                            }
+                                            <span class="fw-bold text-dark">@prod.ProductName</span>
+                                        </div>
+                                    </td>
+                                    <td>@prod.Brand</td>
+                                    <td>
+                                        <span class="badge bg-warning bg-opacity-10 text-warning-emphasis fw-bold">
+                                            ★ @prod.ProductRating.ToString("0.0")
+                                        </span>
+                                    </td>
+                                    <td class="fw-bold text-green-600">Rs. @prod.Price.ToString("N0")</td>
+                                    <td>
+                                        <a href="/Product/Details/@prod.ProductId" class="btn btn-sm btn-outline-primary rounded-pill">Details</a>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Recent Launches Widget -->
+            <div class="bg-white rounded-3xl p-6 shadow-sm border border-gray-100">
+                <h3 class="text-lg font-bold text-gray-900 mb-4 flex items-center">
+                    <i class="fa-solid fa-rocket text-primary mr-2"></i> Recently Discovered Launches
+                </h3>
+                
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle m-0 text-sm">
+                        <thead>
+                            <tr>
+                                <th>Product</th>
+                                <th>Brand</th>
+                                <th>Rating</th>
+                                <th>Price</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var prod in latest)
+                            {
+                                <tr>
+                                    <td>
+                                        <div class="d-flex align-items-center gap-2">
+                                            @if (!string.IsNullOrEmpty(prod.ImageUrl))
+                                            {
+                                                <img src="@prod.ImageUrl" class="rounded" style="width: 32px; height: 32px; object-fit: contain;" />
+                                            }
+                                            <span class="fw-bold text-dark">@prod.ProductName</span>
+                                        </div>
+                                    </td>
+                                    <td>@prod.Brand</td>
+                                    <td>★ @prod.ProductRating.ToString("0.0")</td>
+                                    <td class="fw-bold text-green-600">Rs. @prod.Price.ToString("N0")</td>
+                                    <td>
+                                        <a href="/Product/Details/@prod.ProductId" class="btn btn-sm btn-outline-primary rounded-pill">Details</a>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Right Side: Views, Search Terms, Categories -->
+        <div class="col-lg-4 space-y-6">
+            
+            <!-- Most Viewed Products -->
+            <div class="bg-white rounded-3xl p-5 shadow-sm border border-gray-100">
+                <h3 class="text-md font-bold text-gray-900 mb-4 flex items-center">
+                    <i class="fa-regular fa-eye text-primary mr-2"></i> Most Viewed Products
+                </h3>
+                <ul class="list-group list-group-flush border-0">
+                    @foreach (var prod in mostViewed)
+                    {
+                        <li class="list-group-item bg-transparent border-0 px-0 py-2 d-flex justify-content-between align-items-center text-sm">
+                            <a href="/Product/Details/@prod.ProductId" class="font-semibold text-gray-800 text-decoration-none truncate" style="max-width: 70%;">
+                                @prod.ProductName
+                            </a>
+                            <span class="badge bg-indigo text-indigo-emphasis bg-opacity-10 font-bold">
+                                @prod.Quantity views
+                            </span>
+                        </li>
+                    }
+                </ul>
+            </div>
+
+            <!-- Top Search Analytics -->
+            <div class="bg-white rounded-3xl p-5 shadow-sm border border-gray-100">
+                <h3 class="text-md font-bold text-gray-900 mb-4 flex items-center">
+                    <i class="fa-solid fa-magnifying-glass text-indigo-600 mr-2"></i> Popular Search Terms
+                </h3>
+                <ul class="list-group list-group-flush border-0">
+                    @foreach (var q in searchQueries)
+                    {
+                        <li class="list-group-item bg-transparent border-0 px-0 py-2 d-flex justify-content-between align-items-center text-sm">
+                            <a href="/Product/Search?q=@System.Net.WebUtility.UrlEncode(q.Query)" class="font-semibold text-indigo-600 text-decoration-none">
+                                “@q.Query”
+                            </a>
+                            <span class="text-xs text-muted">@q.Count queries</span>
+                        </li>
+                    }
+                </ul>
+            </div>
+
+            <!-- Category Product Count -->
+            <div class="bg-white rounded-3xl p-5 shadow-sm border border-gray-100">
+                <h3 class="text-md font-bold text-gray-900 mb-4 flex items-center">
+                    <i class="fa-solid fa-chart-pie text-success mr-2"></i> Category Catalog Share
+                </h3>
+                <ul class="list-group list-group-flush border-0">
+                    @foreach (var cat in topCategories)
+                    {
+                        <li class="list-group-item bg-transparent border-0 px-0 py-2 d-flex justify-content-between align-items-center text-sm">
+                            <a href="/Product/Category?cat=@cat.Category" class="font-semibold text-gray-700 text-decoration-none">
+                                @cat.Category
+                            </a>
+                            <span class="text-xs font-bold text-gray-500">@cat.Count items</span>
+                        </li>
+                    }
+                </ul>
+            </div>
+
+        </div>
+    </div>
+</div>
