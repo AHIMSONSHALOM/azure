@@ -14,6 +14,9 @@ namespace ProductHub_MVC.Data
         public DbSet<Company> Companies => Set<Company>();
         public DbSet<Analytics> AnalyticsData => Set<Analytics>();
         public DbSet<Product> Products => Set<Product>();
+        public DbSet<AiSearchLog> AiSearchLogs => Set<AiSearchLog>();
+        public DbSet<UserBookmark> UserBookmarks => Set<UserBookmark>();
+        public DbSet<ProductComparison> ProductComparisons => Set<ProductComparison>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {

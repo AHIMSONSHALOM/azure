@@ -192,6 +192,30 @@ namespace ProductHub_MVC.Controllers
 
             List<Product> products = FetchFilteredProducts(brandFilter, minPrice, maxPrice, minRating, sortBy);
             
+            // Fetch bookmarked product IDs for current session
+            var bookmarkedIds = new HashSet<int>();
+            try
+            {
+                using (var conn = _context.CreateConnection())
+                {
+                    string bookmarkSql = "SELECT F_PRODUCT_ID FROM T_USER_BOOKMARKS WHERE F_USER_SESSION = @User";
+                    using (var cmd = new SqlCommand(bookmarkSql, (SqlConnection)conn))
+                    {
+                        cmd.Parameters.AddWithValue("@User", ViewBag.LoggedUser);
+                        conn.Open();
+                        using (var reader = cmd.ExecuteReader())
+                        {
+                            while (reader.Read())
+                            {
+                                bookmarkedIds.Add(Convert.ToInt32(reader["F_PRODUCT_ID"]));
+                            }
+                        }
+                    }
+                }
+            }
+            catch { }
+            ViewBag.BookmarkedProductIds = bookmarkedIds;
+
             ViewBag.CurrentSort = sortBy;
             ViewBag.CurrentBrand = brandFilter;
             ViewBag.MinPrice = minPrice;
@@ -230,6 +254,23 @@ namespace ProductHub_MVC.Controllers
             // Log activity step into history table
             LogActivity("COMPARE", $"Loaded comparisons dashboard matrices side-by-side for {ids.Count} tracked products parameters.");
 
+            // Log comparison event to T_PRODUCT_COMPARISONS
+            try
+            {
+                using (var conn = _context.CreateConnection())
+                {
+                    string logSql = "INSERT INTO T_PRODUCT_COMPARISONS (F_USER_SESSION, F_PRODUCT_IDS, F_CREATED_AT) VALUES (@User, @Ids, GETDATE())";
+                    using (var cmd = new SqlCommand(logSql, (SqlConnection)conn))
+                    {
+                        cmd.Parameters.AddWithValue("@User", HttpContext.Session.GetString("UserSession") ?? "Anonymous");
+                        cmd.Parameters.AddWithValue("@Ids", string.Join(",", ids));
+                        conn.Open();
+                        cmd.ExecuteNonQuery();
+                    }
+                }
+            }
+            catch { /* Fail-silent */ }
+
             List<Product> comparisonCollection = new List<Product>();
             using (var connection = _context.CreateConnection())
             {
@@ -264,6 +305,65 @@ namespace ProductHub_MVC.Controllers
             }
 
             return View(comparisonCollection);
+        }
+
+        [HttpPost]
+        public IActionResult ToggleBookmark(int productId)
+        {
+            string userSession = HttpContext.Session.GetString("UserSession");
+            if (string.IsNullOrEmpty(userSession))
+            {
+                return Json(new { success = false, message = "Unauthorized access." });
+            }
+
+            bool isBookmarked = false;
+            try
+            {
+                using (var conn = _context.CreateConnection())
+                {
+                    conn.Open();
+
+                    // Check if bookmark exists
+                    string checkSql = "SELECT COUNT(1) FROM T_USER_BOOKMARKS WHERE F_USER_SESSION = @User AND F_PRODUCT_ID = @ProdId";
+                    bool exists = false;
+                    using (var cmd = new SqlCommand(checkSql, (SqlConnection)conn))
+                    {
+                        cmd.Parameters.AddWithValue("@User", userSession);
+                        cmd.Parameters.AddWithValue("@ProdId", productId);
+                        exists = (int)cmd.ExecuteScalar() > 0;
+                    }
+
+                    if (exists)
+                    {
+                        // Remove bookmark
+                        string deleteSql = "DELETE FROM T_USER_BOOKMARKS WHERE F_USER_SESSION = @User AND F_PRODUCT_ID = @ProdId";
+                        using (var cmd = new SqlCommand(deleteSql, (SqlConnection)conn))
+                        {
+                            cmd.Parameters.AddWithValue("@User", userSession);
+                            cmd.Parameters.AddWithValue("@ProdId", productId);
+                            cmd.ExecuteNonQuery();
+                        }
+                        isBookmarked = false;
+                    }
+                    else
+                    {
+                        // Add bookmark
+                        string insertSql = "INSERT INTO T_USER_BOOKMARKS (F_USER_SESSION, F_PRODUCT_ID, F_CREATED_AT) VALUES (@User, @ProdId, GETDATE())";
+                        using (var cmd = new SqlCommand(insertSql, (SqlConnection)conn))
+                        {
+                            cmd.Parameters.AddWithValue("@User", userSession);
+                            cmd.Parameters.AddWithValue("@ProdId", productId);
+                            cmd.ExecuteNonQuery();
+                        }
+                        isBookmarked = true;
+                    }
+                }
+                return Json(new { success = true, isBookmarked = isBookmarked });
+            }
+            catch (Exception ex)
+            {
+                return Json(new { success = false, message = ex.Message });
+            }
         }
 
         // =========================================================================
@@ -704,9 +804,137 @@ namespace ProductHub_MVC.Controllers
             {
                 _ = Task.Run(() => TriggerOnDemandEnrichmentAsync(product));
             }
-            
+            // Load related products (recommendations)
+            var related = new List<Product>();
+            if (!string.IsNullOrEmpty(product.Category))
+            {
+                try
+                {
+                    using (var connection = _context.CreateConnection())
+                    {
+                        string relatedQ = "SELECT TOP 3 F_PRODUCT_ID, F_PROD_NAME, F_BRAND, F_PRICE, F_IMAGE_URL FROM T_PRODUCTS WHERE F_CATEGORY = @Cat AND F_PRODUCT_ID != @Id AND F_IS_APPROVED = 1 ORDER BY F_PROD_RATING DESC";
+                        using (var cmd = new SqlCommand(relatedQ, (SqlConnection)connection))
+                        {
+                            cmd.Parameters.AddWithValue("@Cat", product.Category);
+                            cmd.Parameters.AddWithValue("@Id", id);
+                            connection.Open();
+                            using (var r = cmd.ExecuteReader())
+                            {
+                                while (r.Read())
+                                {
+                                    related.Add(new Product
+                                    {
+                                        ProductId = Convert.ToInt32(r["F_PRODUCT_ID"]),
+                                        ProductName = r["F_PROD_NAME"].ToString() ?? "",
+                                        Brand = r["F_BRAND"].ToString() ?? "",
+                                        Price = Convert.ToDouble(r["F_PRICE"] == DBNull.Value ? 0 : r["F_PRICE"]),
+                                        ImageUrl = r["F_IMAGE_URL"]?.ToString()
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+                catch { }
+            }
+            ViewBag.RelatedProducts = related;
+
+            // Check if currently bookmarked
+            bool isBookmarked = false;
+            try
+            {
+                using (var connection = _context.CreateConnection())
+                {
+                    string checkSql = "SELECT COUNT(1) FROM T_USER_BOOKMARKS WHERE F_USER_SESSION = @User AND F_PRODUCT_ID = @ProdId";
+                    using (var cmd = new SqlCommand(checkSql, (SqlConnection)connection))
+                    {
+                        cmd.Parameters.AddWithValue("@User", HttpContext.Session.GetString("UserSession") ?? "Anonymous");
+                        cmd.Parameters.AddWithValue("@ProdId", id);
+                        connection.Open();
+                        isBookmarked = (int)cmd.ExecuteScalar() > 0;
+                    }
+                }
+            }
+            catch { }
+            ViewBag.IsBookmarked = isBookmarked;
+
             LogActivity("VIEW_DETAILS", $"Viewed detailed AI profile for product: '{product.ProductName}'.");
             return View(product);
+        }
+
+        [HttpGet]
+        public async Task<IActionResult> SystemStatus()
+        {
+            if (HttpContext.Session.GetString("UserSession") == null) return RedirectToAction("Login", "Account");
+            if (HttpContext.Session.GetInt32("IsAdmin") != 1)
+            {
+                TempData["ErrorMessage"] = "🔒 Access Denied: The system status dashboard is restricted to administrators.";
+                return RedirectToAction("Index");
+            }
+
+            var model = new SystemStatusDto();
+
+            // 1. Ping database
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            try
+            {
+                using (var conn = _context.CreateConnection())
+                {
+                    conn.Open();
+                    sw.Stop();
+                    model.DbStatus.IsOnline = true;
+                    model.DbStatus.LatencyMs = sw.ElapsedMilliseconds;
+                }
+            }
+            catch
+            {
+                sw.Stop();
+                model.DbStatus.IsOnline = false;
+                model.DbStatus.LatencyMs = -1;
+            }
+            model.DbStatus.ConnectionString = "localdb (MSSQLLocalDB)";
+
+            // 2. Ping FastAPI AI service
+            model.ApiStatus.Url = "http://localhost:8000";
+            sw = System.Diagnostics.Stopwatch.StartNew();
+            try
+            {
+                using (var client = new HttpClient { Timeout = TimeSpan.FromSeconds(3) })
+                {
+                    var response = await client.GetAsync(model.ApiStatus.Url);
+                    sw.Stop();
+                    model.ApiStatus.IsOnline = response.IsSuccessStatusCode;
+                    model.ApiStatus.LatencyMs = sw.ElapsedMilliseconds;
+                }
+            }
+            catch
+            {
+                sw.Stop();
+                model.ApiStatus.IsOnline = false;
+                model.ApiStatus.LatencyMs = -1;
+            }
+
+            // 3. Ping Ollama Engine
+            model.OllamaStatus.Url = "http://localhost:11434";
+            sw = System.Diagnostics.Stopwatch.StartNew();
+            try
+            {
+                using (var client = new HttpClient { Timeout = TimeSpan.FromSeconds(3) })
+                {
+                    var response = await client.GetAsync(model.OllamaStatus.Url);
+                    sw.Stop();
+                    model.OllamaStatus.IsOnline = response.IsSuccessStatusCode || response.StatusCode == System.Net.HttpStatusCode.NotFound || response.StatusCode == System.Net.HttpStatusCode.BadRequest;
+                    model.OllamaStatus.LatencyMs = sw.ElapsedMilliseconds;
+                }
+            }
+            catch
+            {
+                sw.Stop();
+                model.OllamaStatus.IsOnline = false;
+                model.OllamaStatus.LatencyMs = -1;
+            }
+
+            return View(model);
         }
 
         private async Task<bool> TriggerOnDemandEnrichmentAsync(Product p)
@@ -1492,9 +1720,14 @@ namespace ProductHub_MVC.Controllers
             if (HttpContext.Session.GetString("UserSession") == null) return RedirectToAction("Login", "Account");
             if (string.IsNullOrEmpty(q)) return RedirectToAction("Index");
 
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            string userSession = HttpContext.Session.GetString("UserSession") ?? "Anonymous";
+
             string cacheKey = $"search_{q.Trim().ToLower()}";
             if (_memoryCache.TryGetValue(cacheKey, out AiSearchResponse cachedResponse))
             {
+                sw.Stop();
+                LogAiSearch(q, userSession, (int)sw.ElapsedMilliseconds, "Memory Cache", cachedResponse.ProductCards?.Count ?? 0);
                 ViewBag.Query = q;
                 return View(cachedResponse);
             }
@@ -1507,7 +1740,7 @@ namespace ProductHub_MVC.Controllers
                     string analyticsQ = "INSERT INTO T_PRODUCT_ANALYTICS (ProductId, SearchQuery, UserSession) VALUES (NULL, @Q, @User)";
                     using (var cmd = new SqlCommand(analyticsQ, (SqlConnection)conn)) {
                         cmd.Parameters.AddWithValue("@Q", q);
-                        cmd.Parameters.AddWithValue("@User", HttpContext.Session.GetString("UserSession") ?? "Anonymous");
+                        cmd.Parameters.AddWithValue("@User", userSession);
                         conn.Open();
                         cmd.ExecuteNonQuery();
                     }
@@ -1573,6 +1806,7 @@ namespace ProductHub_MVC.Controllers
                 }
 
                 string summary = "";
+                string modelName = "Local DB + AI Summary";
                 try
                 {
                     using (var client = new HttpClient())
@@ -1590,17 +1824,19 @@ namespace ProductHub_MVC.Controllers
                         var apiRes = await client.PostAsJsonAsync("http://localhost:8000/generate-summary", payload);
                         if (apiRes.IsSuccessStatusCode)
                         {
-                            var resData = await apiRes.Content.ReadFromJsonAsync<JsonElement>();
+                            var resData = await apiRes.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
                             if (resData.TryGetProperty("answer", out var ansVal))
                             {
                                 summary = ansVal.GetString() ?? "";
                             }
+                            modelName = "AI Summary (Ollama)";
                         }
                     }
                 }
                 catch (Exception ex)
                 {
                     summary = $"### AI Summary Generation Offline\n\nGenerated from local database: {dbProducts.Count} products matched. LLM server offline: {ex.Message}";
+                    modelName = "Local DB (Fallback Offline)";
                 }
 
                 if (string.IsNullOrEmpty(summary))
@@ -1616,10 +1852,14 @@ namespace ProductHub_MVC.Controllers
                 response.RelatedProducts = new List<string> { $"Detailed review of {dbProducts[0].ProductName}", $"Compare {q} with alternatives" };
 
                 _memoryCache.Set(cacheKey, response, TimeSpan.FromMinutes(10));
+
+                sw.Stop();
+                LogAiSearch(q, userSession, (int)sw.ElapsedMilliseconds, modelName, response.ProductCards?.Count ?? 0);
             }
             else
             {
                 // Not found in Database: Call Python AI-Search ( DuckDuckGo scraping fallback)
+                string modelName = "AI Search (Ollama)";
                 try {
                     using (var client = new HttpClient()) {
                         var apiResponse = await client.PostAsJsonAsync("http://localhost:8000/ai-search", new { query = q });
@@ -1641,7 +1881,11 @@ namespace ProductHub_MVC.Controllers
                     }
                 } catch (Exception ex) {
                     response.Answer = $"### Error querying AI Search\n\nCould not reach the local AI service. Details: {ex.Message}. Make sure Python FastAPI is running on port 8000.";
+                    modelName = "AI Search (Fallback Offline)";
                 }
+
+                sw.Stop();
+                LogAiSearch(q, userSession, (int)sw.ElapsedMilliseconds, modelName, response.ProductCards?.Count ?? 0);
             }
 
             ViewBag.Query = q;
@@ -1848,6 +2092,24 @@ namespace ProductHub_MVC.Controllers
                 }
             }
             return product;
+        }
+
+        private void LogAiSearch(string query, string userSession, int latencyMs, string modelUsed, int resultCount)
+        {
+            try {
+                using (var conn = _context.CreateConnection()) {
+                    string sql = "INSERT INTO T_AI_SEARCH_LOGS (F_SEARCH_QUERY, F_USER_SESSION, F_RESPONSE_TIME_MS, F_MODEL_USED, F_RESULT_COUNT, F_TIMESTAMP) VALUES (@Q, @User, @Lat, @Model, @Cnt, GETDATE())";
+                    using (var cmd = new SqlCommand(sql, (SqlConnection)conn)) {
+                        cmd.Parameters.AddWithValue("@Q", query);
+                        cmd.Parameters.AddWithValue("@User", userSession);
+                        cmd.Parameters.AddWithValue("@Lat", latencyMs);
+                        cmd.Parameters.AddWithValue("@Model", modelUsed);
+                        cmd.Parameters.AddWithValue("@Cnt", resultCount);
+                        conn.Open();
+                        cmd.ExecuteNonQuery();
+                    }
+                }
+            } catch { }
         }
 
         public class CategoryStat {

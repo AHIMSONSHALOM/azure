@@ -1,92 +1,134 @@
 @{
-    ViewData["Title"] = "Market Analytics Dashboard";
+    ViewData["Title"] = "Market & AI Analytics Dashboard";
 }
 
 <div class="max-w-7xl mx-auto px-4 py-8">
     <div class="flex justify-between items-center mb-8">
         <div>
-            <h1 class="text-3xl font-extrabold text-gray-900 tracking-tight">Market Dashboard</h1>
-            <p class="text-gray-500 mt-1">Real-time insights and product analytics</p>
+            <h1 class="text-3xl font-extrabold text-gray-900 tracking-tight" style="font-family: 'Poppins', sans-serif;">Console Analytics</h1>
+            <p class="text-gray-500 mt-1">Real-time AI telemetry, latency tracking, and inventory statistics</p>
         </div>
         <div>
-            <a asp-action="Index" asp-controller="Product" class="inline-flex items-center px-4 py-2 bg-indigo-50 text-indigo-700 font-bold rounded-lg hover:bg-indigo-100 transition">
+            <a asp-action="Index" asp-controller="Product" class="inline-flex items-center px-4 py-2 bg-indigo-50 text-indigo-700 font-bold rounded-lg hover:bg-indigo-100 transition text-decoration-none">
                 <i class="fa-solid fa-arrow-left mr-2"></i> Back to Feed
             </a>
         </div>
     </div>
 
     <!-- Stats Grid -->
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
         
+        <!-- Total Products Card -->
         <div class="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 relative overflow-hidden group">
             <div class="absolute right-0 top-0 bg-blue-500 text-white w-16 h-16 flex items-center justify-center rounded-bl-3xl opacity-10 group-hover:opacity-20 transition">
                 <i class="fa-solid fa-boxes-stacked text-3xl"></i>
             </div>
-            <p class="text-gray-500 font-medium mb-1">Total Products</p>
-            <h2 class="text-4xl font-extrabold text-gray-900">@ViewBag.TotalProducts</h2>
-            <p class="text-sm text-green-600 mt-2 font-semibold"><i class="fa-solid fa-arrow-trend-up"></i> +12% this week</p>
+            <p class="text-gray-500 font-medium mb-1" style="font-size: 0.85rem;">Total Products</p>
+            <h2 class="text-3xl font-extrabold text-gray-900">@ViewBag.TotalProducts</h2>
+            <p class="text-xs text-green-600 mt-2 font-semibold"><i class="fa-solid fa-arrow-trend-up"></i> Dynamic indexing active</p>
         </div>
 
+        <!-- Active Categories Card -->
         <div class="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 relative overflow-hidden group">
             <div class="absolute right-0 top-0 bg-purple-500 text-white w-16 h-16 flex items-center justify-center rounded-bl-3xl opacity-10 group-hover:opacity-20 transition">
                 <i class="fa-solid fa-tags text-3xl"></i>
             </div>
-            <p class="text-gray-500 font-medium mb-1">Active Categories</p>
-            <h2 class="text-4xl font-extrabold text-gray-900">@ViewBag.TotalCategories</h2>
-            <p class="text-sm text-gray-400 mt-2 font-semibold">Across all tracking models</p>
+            <p class="text-gray-500 font-medium mb-1" style="font-size: 0.85rem;">Active Categories</p>
+            <h2 class="text-3xl font-extrabold text-gray-900">@ViewBag.TotalCategories</h2>
+            <p class="text-xs text-gray-400 mt-2 font-semibold">Normalized mapping</p>
         </div>
 
-        <div class="bg-gradient-to-br from-gray-900 to-gray-800 rounded-2xl p-6 shadow-lg border border-gray-700 relative overflow-hidden">
-            <div class="absolute -right-4 -bottom-4 text-gray-700 opacity-50">
-                <i class="fa-solid fa-robot text-8xl"></i>
+        <!-- Total AI Searches Card -->
+        <div class="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 relative overflow-hidden group">
+            <div class="absolute right-0 top-0 bg-teal-500 text-white w-16 h-16 flex items-center justify-center rounded-bl-3xl opacity-10 group-hover:opacity-20 transition">
+                <i class="fa-solid fa-magnifying-glass text-3xl"></i>
             </div>
-            <p class="text-gray-400 font-medium mb-1 relative z-10">AI Indexing Status</p>
-            <h2 class="text-3xl font-extrabold text-white relative z-10 mb-2">Optimal</h2>
-            <div class="w-full bg-gray-700 rounded-full h-2 relative z-10">
-                <div class="bg-green-500 h-2 rounded-full" style="width: 100%"></div>
+            <p class="text-gray-500 font-medium mb-1" style="font-size: 0.85rem;">Total AI Searches</p>
+            <h2 class="text-3xl font-extrabold text-gray-900">@ViewBag.TotalAiSearches</h2>
+            <p class="text-xs text-teal-600 mt-2 font-semibold"><i class="fa-solid fa-circle-check"></i> Logging search events</p>
+        </div>
+
+        <!-- Average AI Latency Card -->
+        <div class="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 relative overflow-hidden group">
+            <div class="absolute right-0 top-0 bg-amber-500 text-white w-16 h-16 flex items-center justify-center rounded-bl-3xl opacity-10 group-hover:opacity-20 transition">
+                <i class="fa-solid fa-gauge-high text-3xl"></i>
             </div>
+            <p class="text-gray-500 font-medium mb-1" style="font-size: 0.85rem;">Avg Search Latency</p>
+            <h2 class="text-3xl font-extrabold text-gray-900">@ViewBag.AvgResponseTime <span class="text-sm font-normal text-gray-500">ms</span></h2>
+            <p class="text-xs mt-2 font-semibold @(ViewBag.AvgResponseTime < 500 ? "text-green-600" : "text-amber-600")">
+                <i class="fa-solid fa-bolt"></i> Target: &lt; 500ms
+            </p>
         </div>
 
     </div>
 
     <!-- Charts Section -->
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
         
         <!-- Category Distribution Chart -->
         <div class="bg-white rounded-3xl p-8 shadow-sm border border-gray-100">
-            <h3 class="text-xl font-bold text-gray-900 mb-6 border-b border-gray-100 pb-4">Product Distribution by Category</h3>
+            <h3 class="text-xl font-bold text-gray-900 mb-6 border-b border-gray-100 pb-4" style="font-family: 'Poppins', sans-serif;">Product Distribution by Category</h3>
             <div class="relative h-64 w-full">
                 <canvas id="categoryChart"></canvas>
             </div>
         </div>
 
-        <!-- Trending Capabilities Panel -->
+        <!-- AI Model & Cache Usage Chart -->
         <div class="bg-white rounded-3xl p-8 shadow-sm border border-gray-100">
-            <h3 class="text-xl font-bold text-gray-900 mb-6 border-b border-gray-100 pb-4">Market Insights</h3>
-            
-            <div class="space-y-6">
-                <div class="flex items-start">
-                    <div class="flex-shrink-0 w-12 h-12 rounded-full bg-purple-100 flex items-center justify-center text-purple-600 font-bold text-xl mr-4">
-                        1
-                    </div>
-                    <div>
-                        <h4 class="font-bold text-gray-900">Artificial Intelligence is surging</h4>
-                        <p class="text-gray-500 text-sm mt-1">Based on recent Wikidata scans, the AI sector accounts for 45% of newly added products this month.</p>
-                    </div>
-                </div>
-                
-                <div class="flex items-start">
-                    <div class="flex-shrink-0 w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold text-xl mr-4">
-                        2
-                    </div>
-                    <div>
-                        <h4 class="font-bold text-gray-900">Consumer Hardware stabilizing</h4>
-                        <p class="text-gray-500 text-sm mt-1">Price volatility in hardware tech has dropped, with average ratings maintaining a solid 4.2 stars.</p>
-                    </div>
-                </div>
+            <h3 class="text-xl font-bold text-gray-900 mb-6 border-b border-gray-100 pb-4" style="font-family: 'Poppins', sans-serif;">Search Engines & Cache Usage</h3>
+            <div class="relative h-64 w-full">
+                <canvas id="modelChart"></canvas>
             </div>
         </div>
 
+    </div>
+
+    <!-- Activity Log Panel -->
+    <div class="bg-white rounded-3xl p-8 shadow-sm border border-gray-100">
+        <h3 class="text-xl font-bold text-gray-900 mb-6 border-b border-gray-100 pb-4" style="font-family: 'Poppins', sans-serif;">Recent AI Search Telemetry Log</h3>
+        
+        <div class="overflow-x-auto">
+            <table class="table align-middle w-full text-sm">
+                <thead>
+                    <tr class="text-secondary fw-semibold border-bottom" style="font-size: 0.85rem;">
+                        <th class="py-3 px-2">Search Query</th>
+                        <th class="py-3 px-2">Session User</th>
+                        <th class="py-3 px-2">Resolution Engine</th>
+                        <th class="py-3 px-2 text-end">Response Time</th>
+                        <th class="py-3 px-2 text-end">Timestamp</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (ViewBag.RecentLogs != null && ((List<ProductHub_MVC.Controllers.AiSearchLogDto>)ViewBag.RecentLogs).Count > 0)
+                    {
+                        foreach (var log in (List<ProductHub_MVC.Controllers.AiSearchLogDto>)ViewBag.RecentLogs)
+                        {
+                            <tr class="border-bottom border-light hover:bg-gray-50 transition">
+                                <td class="py-3 px-2 font-semibold text-gray-800">
+                                    <span class="bg-light px-2 py-1 rounded text-dark border mr-2">@log.SearchQuery</span>
+                                </td>
+                                <td class="py-3 px-2 text-muted">@log.UserSession</td>
+                                <td class="py-3 px-2">
+                                    <span class="badge @(log.ModelUsed.Contains("Cache") ? "bg-success" : (log.ModelUsed.Contains("Error") ? "bg-danger" : "bg-primary"))">
+                                        @log.ModelUsed
+                                    </span>
+                                </td>
+                                <td class="py-3 px-2 text-end font-mono font-semibold @(log.ResponseTimeMs > 2000 ? "text-amber-600" : "text-green-600")">
+                                    @log.ResponseTimeMs ms
+                                </td>
+                                <td class="py-3 px-2 text-end text-xs text-muted">@log.Timestamp.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                            </tr>
+                        }
+                    }
+                    else
+                    {
+                        <tr>
+                            <td colspan="5" class="text-center py-6 text-muted">No telemetry logs recorded yet. Run a search to populate.</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
     </div>
 </div>
 
@@ -94,16 +136,17 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
     document.addEventListener("DOMContentLoaded", function() {
-        const ctx = document.getElementById('categoryChart').getContext('2d');
-        const labels = [@Html.Raw(ViewBag.ChartLabels)];
-        const dataVals = [@ViewBag.ChartData];
+        // 1. Category Chart
+        const catCtx = document.getElementById('categoryChart').getContext('2d');
+        const catLabels = [@Html.Raw(ViewBag.ChartLabels)];
+        const catDataVals = [@ViewBag.ChartData];
         
-        new Chart(ctx, {
+        new Chart(catCtx, {
             type: 'doughnut',
             data: {
-                labels: labels.length > 0 ? labels : ['No Data'],
+                labels: catLabels.length > 0 ? catLabels : ['No Data'],
                 datasets: [{
-                    data: dataVals.length > 0 ? dataVals : [1],
+                    data: catDataVals.length > 0 ? catDataVals : [1],
                     backgroundColor: [
                         '#6366f1', // Indigo
                         '#a855f7', // Purple
@@ -122,7 +165,42 @@
                 plugins: {
                     legend: {
                         position: 'right',
-                        labels: { padding: 20, font: { family: "'Inter', sans-serif" } }
+                        labels: { padding: 15, font: { family: "'Inter', sans-serif", size: 11 } }
+                    }
+                },
+                cutout: '70%'
+            }
+        });
+
+        // 2. Model Usage Chart
+        const modelCtx = document.getElementById('modelChart').getContext('2d');
+        const modelLabels = [@Html.Raw(ViewBag.ModelChartLabels)];
+        const modelDataVals = [@ViewBag.ModelChartData];
+        
+        new Chart(modelCtx, {
+            type: 'doughnut',
+            data: {
+                labels: modelLabels.length > 0 ? modelLabels : ['No Activity'],
+                datasets: [{
+                    data: modelDataVals.length > 0 ? modelDataVals : [1],
+                    backgroundColor: [
+                        '#10b981', // Emerald (Cache)
+                        '#3b82f6', // Blue (AI summary)
+                        '#f59e0b', // Amber (AI search)
+                        '#ef4444', // Red (Error)
+                        '#6b7280', // Gray (Offline/Other)
+                    ],
+                    borderWidth: 0,
+                    hoverOffset: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'right',
+                        labels: { padding: 15, font: { family: "'Inter', sans-serif", size: 11 } }
                     }
                 },
                 cutout: '70%'

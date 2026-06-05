@@ -33,6 +33,10 @@ except Exception as e:
     collection = None
     print(f"Warning: ChromaDB collection initialization failed. {e}")
 
+@app.get("/")
+def read_root():
+    return {"status": "online", "service": "ProductHub AI Service"}
+
 class ClassifyRequest(BaseModel):
     name: str
     description: str = ""

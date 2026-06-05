@@ -183,6 +183,10 @@
                         <div class="flex justify-between items-center mb-6 px-2">
                             <h2 class="text-2xl font-extrabold text-gray-800 tracking-tight">Product Feed <span class="text-blue-500 text-sm align-top ml-2">@Model.Count() items</span></h2>
                             <div class="flex items-center space-x-4">
+                                <div class="form-check m-0 mr-3">
+                                    <input type="checkbox" id="selectAllBoxes" class="form-check-input cursor-pointer" />
+                                    <label class="form-check-label text-sm text-gray-500 cursor-pointer" for="selectAllBoxes">Select All</label>
+                                </div>
                                 <a href="javascript:void(0);" onclick="applySort('Latest')" class="text-sm font-semibold text-gray-600 hover:text-blue-600 transition">Latest Launches</a>
                                 <a href="javascript:void(0);" onclick="applySort('Trending')" class="text-sm font-semibold text-gray-600 hover:text-blue-600 transition">🔥 Trending</a>
                             </div>
@@ -195,6 +199,17 @@
                                 <div class="bg-white rounded-2xl shadow-sm border border-gray-100 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 overflow-hidden relative group flex flex-col h-full">
                                     <div class="absolute top-4 left-4 z-10 flex items-center space-x-2">
                                         <input type="checkbox" name="ids" value="@prod.ProductId" class="w-5 h-5 text-blue-600 rounded focus:ring-blue-500 form-check-input row-item-checkbox shadow-sm cursor-pointer" />
+                                        
+                                        <button type="button" onclick="toggleBookmark(@prod.ProductId, this)" class="w-7 h-7 bg-white/95 rounded-full border shadow-sm flex items-center justify-center text-gray-400 hover:text-warning transition" title="Bookmark product">
+                                            @if (ViewBag.BookmarkedProductIds != null && ((HashSet<int>)ViewBag.BookmarkedProductIds).Contains(prod.ProductId))
+                                            {
+                                                <i class="fa-solid fa-star text-warning"></i>
+                                            }
+                                            else
+                                            {
+                                                <i class="fa-regular fa-star"></i>
+                                            }
+                                        </button>
                                     </div>
                                     <div class="absolute top-4 right-4 z-10 bg-white/90 backdrop-blur-md px-3 py-1 rounded-full text-xs font-bold shadow-sm border border-gray-100">
                                         <span class="text-yellow-500">★</span> @prod.ProductRating.ToString("0.0")
@@ -413,6 +428,29 @@
         let boxes = document.querySelectorAll('.row-item-checkbox');
         boxes.forEach(box => box.checked = this.checked);
     });
+
+    function toggleBookmark(productId, btn) {
+        fetch('/Product/ToggleBookmark', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: 'productId=' + productId
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                const icon = btn.querySelector('i');
+                if (data.isBookmarked) {
+                    icon.className = 'fa-solid fa-star text-warning';
+                } else {
+                    icon.className = 'fa-regular fa-star';
+                }
+            } else {
+                alert("Could not update bookmark: " + data.message);
+            }
+        });
+    }
     function triggerComparison() {
         let checkboxes = document.querySelectorAll('.row-item-checkbox:checked');
         if (checkboxes.length < 2 || checkboxes.length > 4) { alert("Please check between 2 and 4 rows to Compare."); return; }

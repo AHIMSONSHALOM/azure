@@ -1155,5 +1155,76 @@ namespace ProductHub_MVC.Controllers
             HttpContext.Session.Clear();
             return RedirectToAction(nameof(Login));
         }
+
+        [HttpGet]
+        public IActionResult Profile()
+        {
+            string userSession = HttpContext.Session.GetString("UserSession");
+            if (userSession == null) return RedirectToAction("Login", "Account");
+
+            var bookmarkedProducts = new List<Product>();
+            var recentSearches = new List<string>();
+
+            try
+            {
+                using (var conn = _context.CreateConnection())
+                {
+                    conn.Open();
+
+                    // 1. Fetch Bookmarked Products
+                    string bookmarkSql = @"
+                        SELECT p.F_PRODUCT_ID, p.F_PROD_NAME, p.F_BRAND, p.F_PRICE, p.F_IMAGE_URL 
+                        FROM T_USER_BOOKMARKS b
+                        JOIN T_PRODUCTS p ON b.F_PRODUCT_ID = p.F_PRODUCT_ID
+                        WHERE b.F_USER_SESSION = @User";
+                    using (var cmd = new SqlCommand(bookmarkSql, (SqlConnection)conn))
+                    {
+                        cmd.Parameters.AddWithValue("@User", userSession);
+                        using (var r = cmd.ExecuteReader())
+                        {
+                            while (r.Read())
+                            {
+                                bookmarkedProducts.Add(new Product
+                                {
+                                    ProductId = Convert.ToInt32(r["F_PRODUCT_ID"]),
+                                    ProductName = r["F_PROD_NAME"].ToString() ?? "",
+                                    Brand = r["F_BRAND"].ToString() ?? "",
+                                    Price = Convert.ToDouble(r["F_PRICE"] == DBNull.Value ? 0 : r["F_PRICE"]),
+                                    ImageUrl = r["F_IMAGE_URL"]?.ToString()
+                                });
+                            }
+                        }
+                    }
+
+                    // 2. Fetch Recent Searches
+                    string searchSql = @"
+                        SELECT TOP 10 SearchQuery, MAX(Timestamp) as MaxTime 
+                        FROM T_PRODUCT_ANALYTICS 
+                        WHERE UserSession = @User AND SearchQuery IS NOT NULL 
+                        GROUP BY SearchQuery 
+                        ORDER BY MaxTime DESC";
+                    using (var cmd = new SqlCommand(searchSql, (SqlConnection)conn))
+                    {
+                        cmd.Parameters.AddWithValue("@User", userSession);
+                        using (var r = cmd.ExecuteReader())
+                        {
+                            while (r.Read())
+                            {
+                                recentSearches.Add(r["SearchQuery"].ToString() ?? "");
+                            }
+                        }
+                    }
+                }
+            }
+            catch { /* Fail-silent */ }
+
+            ViewBag.Username = userSession;
+            ViewBag.Email = HttpContext.Session.GetString("UserProfileEmail") ?? userSession;
+            ViewBag.ProfilePicture = HttpContext.Session.GetString("UserProfilePicture");
+            ViewBag.Bookmarks = bookmarkedProducts;
+            ViewBag.RecentSearches = recentSearches;
+
+            return View();
+        }
     }
 }

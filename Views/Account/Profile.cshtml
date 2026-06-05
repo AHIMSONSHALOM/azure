@@ -1,0 +1,167 @@
+@{
+    ViewData["Title"] = "User Profile Console";
+}
+
+<div class="max-w-7xl mx-auto px-4 py-8">
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        
+        <!-- Profile Sidebar Card -->
+        <div class="lg:col-span-1">
+            <div class="bg-white rounded-3xl p-8 shadow-sm border border-gray-100 text-center relative overflow-hidden">
+                <div class="absolute inset-x-0 top-0 h-32 bg-gradient-to-r from-indigo-500 to-purple-600"></div>
+                
+                <div class="relative pt-16 mb-6">
+                    <div class="inline-block relative">
+                        @if (ViewBag.ProfilePicture != null)
+                        {
+                            <img src="@ViewBag.ProfilePicture" class="w-32 h-32 rounded-full border-4 border-white shadow-lg object-cover mx-auto" />
+                        }
+                        else
+                        {
+                            <div class="w-32 h-32 rounded-full border-4 border-white shadow-lg bg-indigo-100 text-indigo-600 flex items-center justify-center text-5xl font-bold mx-auto">
+                                @(ViewBag.Username != null ? ViewBag.Username[0].ToString().ToUpper() : "U")
+                            </div>
+                        }
+                        <span class="absolute bottom-1 right-2 bg-green-500 w-5 h-5 rounded-full border-4 border-white" title="Active Session"></span>
+                    </div>
+                </div>
+
+                <h2 class="text-2xl font-extrabold text-gray-900" style="font-family: 'Poppins', sans-serif;">@ViewBag.Username</h2>
+                <p class="text-gray-500 text-sm mt-1">@ViewBag.Email</p>
+                
+                <div class="border-t border-gray-100 my-6 pt-6 grid grid-cols-2 gap-4">
+                    <div>
+                        <p class="text-xs text-gray-400 font-medium uppercase tracking-wider">Bookmarked</p>
+                        <h4 class="text-xl font-bold text-gray-800">@(ViewBag.Bookmarks != null ? ((List<Product>)ViewBag.Bookmarks).Count : 0)</h4>
+                    </div>
+                    <div>
+                        <p class="text-xs text-gray-400 font-medium uppercase tracking-wider">Recent Queries</p>
+                        <h4 class="text-xl font-bold text-gray-800">@(ViewBag.RecentSearches != null ? ((List<string>)ViewBag.RecentSearches).Count : 0)</h4>
+                    </div>
+                </div>
+
+                <div class="space-y-3 pt-2">
+                    <a asp-action="Index" asp-controller="Product" class="btn btn-outline-primary btn-sm w-full rounded-pill py-2 fw-semibold">
+                        Browse Product Feed
+                    </a>
+                    <a asp-action="Logout" asp-controller="Account" class="btn btn-outline-danger btn-sm w-full rounded-pill py-2 fw-semibold border-0">
+                        <i class="fa-solid fa-power-off mr-1"></i> Terminate Session
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bookmarks & Search History Panels -->
+        <div class="lg:col-span-2 space-y-8">
+            
+            <!-- Bookmarks Shelf -->
+            <div class="bg-white rounded-3xl p-8 shadow-sm border border-gray-100">
+                <div class="flex justify-between items-center mb-6 border-b border-gray-100 pb-4">
+                    <h3 class="text-xl font-bold text-gray-900" style="font-family: 'Poppins', sans-serif;">
+                        <i class="fa-solid fa-star text-warning mr-2"></i> Bookmarked Products
+                    </h3>
+                    <span class="text-xs bg-indigo-50 text-indigo-700 px-3 py-1 rounded-full font-bold">
+                        @(ViewBag.Bookmarks != null ? ((List<Product>)ViewBag.Bookmarks).Count : 0) Saved
+                    </span>
+                </div>
+
+                @if (ViewBag.Bookmarks != null && ((List<Product>)ViewBag.Bookmarks).Count > 0)
+                {
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        @foreach (var p in (List<Product>)ViewBag.Bookmarks)
+                        {
+                            <div class="bg-light rounded-2xl p-4 border border-gray-100 flex gap-4 hover:shadow-md transition relative group">
+                                <button onclick="toggleProfileBookmark(@p.ProductId, this)" class="absolute top-2 right-2 text-warning hover:text-gray-300 transition">
+                                    <i class="fa-solid fa-star text-lg"></i>
+                                </button>
+                                
+                                <div class="w-20 h-20 rounded-xl bg-white flex items-center justify-center overflow-hidden border border-gray-100 shrink-0">
+                                    @if (!string.IsNullOrEmpty(p.ImageUrl))
+                                    {
+                                        <img src="@p.ImageUrl" class="object-contain w-full h-full p-1" />
+                                    }
+                                    else
+                                    {
+                                        <i class="fa-solid fa-box text-3xl text-gray-300"></i>
+                                    }
+                                </div>
+                                <div class="flex flex-col justify-between overflow-hidden">
+                                    <div>
+                                        <span class="text-xs bg-primary bg-opacity-10 text-primary px-2 py-0.5 rounded-full font-semibold">@p.Brand</span>
+                                        <h4 class="font-bold text-gray-900 text-sm mt-1 truncate max-w-[180px]">@p.ProductName</h4>
+                                    </div>
+                                    <div class="flex justify-between items-center mt-2">
+                                        <span class="font-bold text-indigo-600 text-sm">Rs. @p.Price.ToString("N0")</span>
+                                        <a href="/Product/Details/@p.ProductId" class="text-xs text-primary font-bold hover:underline">Details &rarr;</a>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <div class="text-center py-12 text-gray-400">
+                        <i class="fa-regular fa-star text-5xl mb-4 opacity-50"></i>
+                        <p>You haven't bookmarked any products yet.</p>
+                        <a href="/Product" class="text-primary font-semibold hover:underline mt-2 inline-block">Explore catalog</a>
+                    </div>
+                }
+            </div>
+
+            <!-- Recent Queries list -->
+            <div class="bg-white rounded-3xl p-8 shadow-sm border border-gray-100">
+                <h3 class="text-xl font-bold text-gray-900 mb-6 border-b border-gray-100 pb-4" style="font-family: 'Poppins', sans-serif;">
+                    <i class="fa-solid fa-clock-rotate-left text-gray-500 mr-2"></i> Recent Search History
+                </h3>
+
+                @if (ViewBag.RecentSearches != null && ((List<string>)ViewBag.RecentSearches).Count > 0)
+                {
+                    <div class="flex flex-wrap gap-3">
+                        @foreach (var query in (List<string>)ViewBag.RecentSearches)
+                        {
+                            <a href="/Product/Search?q=@Uri.EscapeDataString(query)" class="inline-flex items-center px-4 py-2 bg-gray-50 border border-gray-200 rounded-full text-sm font-medium text-gray-700 hover:bg-indigo-50 hover:text-indigo-700 hover:border-indigo-200 transition">
+                                <i class="fa-solid fa-magnifying-glass mr-2 text-gray-400 text-xs"></i> @query
+                            </a>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <div class="text-center py-8 text-gray-400">
+                        <i class="fa-solid fa-clock-rotate-left text-4xl mb-3 opacity-50"></i>
+                        <p>No query history recorded yet.</p>
+                    </div>
+                }
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<script>
+    function toggleProfileBookmark(productId, btnElement) {
+        fetch('/Product/ToggleBookmark', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: 'productId=' + productId
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Instantly remove from profile card display
+                const card = btnElement.closest('.bg-light');
+                card.style.opacity = '0';
+                setTimeout(() => {
+                    card.remove();
+                    // Reload if no cards left to show blank state
+                    if (document.querySelectorAll('.bg-light').length === 0) {
+                        window.location.reload();
+                    }
+                }, 300);
+            }
+        });
+    }
+</script>
